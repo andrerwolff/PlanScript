@@ -6,46 +6,52 @@ from planscript.cli.display import *
 
 
 def main():
-    print("PlanScript")
-    print("==========")
     project = None
 
-    actions = {
-                "n": new_project,
-                "o": open_project,
-                "q": quit,
-            }
-    
     while True:
         choice = main_menu()
 
-        action = actions.get(choice)
+        if choice == "n":
+            project = new_project()
+            project_directory(project)
 
-        if action is None:
+        elif choice == "o":
+            project = open_project()
+            project_directory(project)
+
+        elif choice == "q":
+            break
+
+        else:
             print("Invalid Option.")
             continue
 
-        action()
 
-
-def project_menu(project):
+def project_directory(project):
 
     while True:
-        choice = project_menu()
+        choice = project_menu(project)
 
-        if choice == "1":
+        if choice == "t":
             add_task(project)
 
-        elif choice == "2":
+        elif choice == "d":
             add_dependency(project)
 
-        elif choice == "3":
+        elif choice == "l":
             list_tasks(project)
 
-        elif choice == "5":
+        elif choice == "e":
+            list_dependencies(project)
+
+        elif choice == "s":
             project.schedule()
 
-        elif choice == "7":
+        elif choice == "v":
+            view_project(project)
+
+        elif choice == "b":
+            #project = None  <- May need this to reset the project variable when returning to main menu
             break
 
 def new_project():
