@@ -1,82 +1,296 @@
 from datetime import date, timedelta
 
-from planscript.model.project import Project
-from planscript.cli.display import *
+from planscript.model import Project, Task, Dependency, DependencyType
+from planscript.cli import display
 
 
-
-def main():
+# Menus
+def main_menu():
     project = None
 
     while True:
-        choice = main_menu()
+        choice = display.show_main_menu()
 
         if choice == "n":
             project = new_project()
-            project_directory(project)
+            if project:
+                project_menu(project)
+            else:
+                print("No project created. Returning to main menu.")
+                continue
 
         elif choice == "o":
             project = open_project()
-            project_directory(project)
+            if project:
+                project_menu(project)
+            else:
+                print("No project opened. Returning to main menu.")
+                continue
+
+        elif choice == "r":
+            # Implement recent projects functionality here
+            pass
 
         elif choice == "q":
             break
 
         else:
-            print("Invalid Option.")
+            print("Invalid Option mm.")
             continue
 
-
-def project_directory(project):
+def project_menu(project):
 
     while True:
-        choice = project_menu(project)
+        choice = display.show_project_menu(project)
 
         if choice == "t":
-            add_task(project)
+            task_menu(project)
 
         elif choice == "d":
-            add_dependency(project)
+            dependency_menu(project)
 
-        elif choice == "l":
-            list_tasks(project)
-
-        elif choice == "e":
-            list_dependencies(project)
-
-        elif choice == "s":
-            project.schedule()
+        elif choice == "p":
+            # Implement project properties functionality here
+            print("Project Properties functionality is not yet implemented.")
+            pass
 
         elif choice == "v":
-            view_project(project)
+            # Implement view schedule functionality here
+            print("View Schedule functionality is not yet implemented.")
+            pass
+
+        elif choice == "s":
+            # Implement save project functionality here
+            print("Save Project functionality is not yet implemented.")
+            pass
 
         elif choice == "b":
             #project = None  <- May need this to reset the project variable when returning to main menu
             break
 
+        elif choice == "q":
+            print("Exiting the application.")
+            exit()
+
+def task_menu(project):
+    while True:
+        choice = display.show_task_menu(project)
+
+        if choice == "n":
+            new_task(project)
+
+        elif choice == "e":
+            print("\nEDIT TASK")
+            print("-" * 50)
+            print()
+            task_to_edit = display.select_task(project, "Edit")
+            if task_to_edit:
+                edit_task_menu(project, task_to_edit)
+            else:
+                print("Invalid task index.")
+                continue
+
+        elif choice == "x":
+            print("\nDELETE TASK")
+            print("-" * 50)
+            print()
+            task_to_remove = display.select_task(project, "Delete")
+            if task_to_remove:
+                project.remove_task(task_to_remove.number)
+            else:
+                print("Task not found.")
+
+        elif choice == "b":
+            break
+
+        else:
+            print("Invalid Option t.")
+            continue
+
+def edit_task_menu(project, task):
+    while True:
+        choice = display.show_task_edit_menu(project, task)
+
+        if choice == "#":
+            new_number = input("Enter new task number: ")
+            if new_number in project.tasks:
+                print(f"Task number '{new_number}' already exists in the project. Please choose a different number.")
+                continue
+            task.number = new_number
+            print(f"Task number updated to '{new_number}'.")
+            project.sort_tasks()  # Ensure tasks are sorted after renumbering
+            continue  # Return to the edit menu after renumbering
+            
+
+        if choice == "n":
+            new_name = input("Enter new task name: ")
+            task.name = new_name
+            print(f"Task name updated to '{new_name}'.")
+
+        elif choice == "d":
+            # Implement edit task duration functionality here
+            print("Edit Task Duration functionality is not yet implemented.")
+            pass
+
+        elif choice == "b":
+            break
+
+        else:
+            print("Invalid Option et.")
+            continue
+
+def dependency_menu(project):
+    while True:
+        choice = display.show_dependency_menu(project)
+
+        if choice == "n":
+            new_dependency(project)
+        
+        elif choice == "e":
+            print("\nEDIT DEPENDENCY")
+            print("-" * 50)
+            print()
+            dependency_to_edit = display.select_dependency(project, "Edit")
+            if dependency_to_edit:
+                edit_dependency_menu(project, dependency_to_edit)
+            else:
+                print("Invalid dependency index.")
+                continue
+
+        elif choice == "x":
+            print("\nDELETE DEPENDENCY")
+            print("-" * 50)
+            print()
+            dependency_to_remove = display.select_dependency(project, "Delete")
+            if dependency_to_remove:
+                project.remove_dependency(dependency_to_remove)
+            else:
+                print("Dependency not found.")
+
+        elif choice == "b":
+            break
+
+        else:
+            print("Invalid Option d.")
+            continue
+
+#Project Functions
 def new_project():
-    print("Creating new project...")
+    print("\nNEW PROJECT")
+    print("-" * 50)
+    print()
     proj_name = input("Project Name: ")
 
-    proj_start = input("Defined Start Date: ")
-    project = Project(name=proj_name, start=proj_start)
+    create = input(f"Create project '{proj_name}'? (y/n): ").strip().lower()
+    if create != 'y':
+        print("Project creation cancelled.")
+        return None
+    project = Project(name=proj_name)
+
+    print("\nProject created!\n")
+    print(f"Project Name: {project.name}")
+    print("Location: File system (not yet implemented)")
+    print("File: (not yet implemented)")
+    print()
+    input("Press Enter to continue...")
     return project
 
 def open_project():
-    pass
+    project = Project("Test Project")
 
-def quit():
-    pass
-    
+    project.add_task(Task("1.1", "PM", timedelta(days=100)))
+    project.add_task(Task("2.1", "Design", timedelta(days=200)))
+    project.add_task(Task("3.1", "Construction", timedelta(days=300)))
+    project.add_task(Task("4.1", "Closeout", timedelta(days=20)))
 
+    project.add_dependency("2.1", "3.1", lag=timedelta(days=10))
+    project.add_dependency("1.1", "4.1")
+    project.add_dependency("3.1", "4.1")
+    project.add_dependency("1.1", "4.1", DependencyType.FINISH_FINISH, timedelta(days=14))
 
-def add_task(project):
+    return project
+
+#Task Functions
+def new_task(project):
+    print("\nNEW TASK")
+    print("-" * 50)
+    print()
     task_number = input("Task Number: ")
     task_name = input("Task Name: ")
     task_duration = int(input("Duration (days): "))
 
-    project.add_task(
-        number = task_number,
-        name = task_name,
-        duration = timedelta(days=task_duration),
-    )
+    predecessors = []
+    while True:
+        predecessor = input("Enter a predecessor task number (or press Enter to finish): ").strip()
+        if not predecessor:
+            break
+        if predecessor not in project.tasks:
+            print(f"Task with number '{predecessor}' does not exist in the project. Please enter a valid task number.")
+            continue
+        predecessors.append(predecessor)
+    if predecessors:
+        print(f"Predecessors: {', '.join(predecessors)}")
+
+    create = input(f"Create Task? (y/n): ").strip().lower()
+    if create != 'y':
+        print("Task creation cancelled.")
+        return None
+
+    new_task = Task(
+            number=task_number,
+            name=task_name,
+            duration=timedelta(days=task_duration),
+        )
+
+    project.add_task(new_task)
+    print(f"\nTask '{new_task.number} - {new_task.name}' added to project '{project.name}'.\n")
+
+    for predecessor in predecessors:
+        successor = task_number
+        project.add_dependency(predecessor, successor)
+
+
+
+#Dependency Functions
+def new_dependency(project):
+    #TODO control for predecessor and successor being the same number
+    print("\nNEW DEPENDENCY")
+    print("-" * 50)
+    print()
+
+    predecessor = input("Predecessor Task Number: ")
+    successor = input("Successor Task Number: ")
+#TODO fix this, duplicating the dependency because we add it twice
+    try:
+        project.add_dependency(predecessor, successor)
+    except ValueError as e:
+        print(e)
+        return
+
+    dep_type_input = input("Dependency Type (FS, SS, FF, SF) [default FS]: ").strip().upper()
+    dep_type = DependencyType.FINISH_START  # Default
+    if dep_type_input:
+        try:
+            dep_type = DependencyType(dep_type_input)
+        except ValueError:
+            print(f"Invalid dependency type '{dep_type_input}'. Using default 'FS'.")
+
+    lag_days_input = input("Lag (days) [default 0]: ").strip()
+    lag_days = 0
+    if lag_days_input:
+        try:
+            lag_days = int(lag_days_input)
+        except ValueError:
+            print(f"Invalid lag value '{lag_days_input}'. Using default 0.")
+
+    project.add_dependency(predecessor, successor, dep_type, timedelta(days=lag_days))
+
+def delete_dependency(project):
+    print("\nDELETE DEPENDENCY")
+    print("-" * 50)
+    print()
+   
+    if dependency_to_remove:
+        project.remove_dependency(dependency_to_remove)
+    else:
+        print("Dependency not found.")

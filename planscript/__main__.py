@@ -1,4 +1,4 @@
-from planscript.cli.app import main
+from planscript.cli.app import main_menu
 
 if __name__ == "__main__":
-    main()
+    main_menu()

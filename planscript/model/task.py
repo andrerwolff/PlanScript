@@ -14,4 +14,7 @@ class Task:
     calendar: str | None = None
 
     constraints: list = field(default_factory=list)
-    metadata: dict = field(default_factory=dict)    
+    metadata: dict = field(default_factory=dict)
+
+    def __str__(self):
+        return f"{self.number} - {self.name} {self.duration.days}d"    

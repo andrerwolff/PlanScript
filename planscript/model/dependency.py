@@ -17,3 +17,6 @@ class Dependency:
     successor: str
     type: DependencyType = DependencyType.FINISH_START
     lag: timedelta = timedelta(0)
+
+    def __str__(self):
+        return f"{self.predecessor} -> {self.successor} ({self.type.value}, Lag: {self.lag.days}d)"
