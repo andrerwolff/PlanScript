@@ -97,11 +97,26 @@ def show_dependency_menu(project):
 
     return input("  Select an option: ").strip().lower()
 
+def show_depend_edit_menu(project, dependency):
+    print()
+    print("-" * 50)
+    print(f"  Edit Dependency: {dependency}")
+    print("-" * 50)
+    print()
+    print("  [P] Edit Predecessor")
+    print("  [S] Edit Successor")
+    print("  [T] Edit Type")
+    print("  [L] Edit Lag")
+    print("  [B] Back to Dependency Menu")
+    print()
+
+    return input("  Select an option: ").strip().lower()
+
 def display_task_with_dependencies(project, task):
     predecessors = project.get_predecessors(task)
 
     if predecessors:        
-        dependency_info = ", ".join(predecessor for predecessor in predecessors)
+        dependency_info = ", ".join(predecessor.number for predecessor in predecessors)
     else:
         dependency_info = "-"
 

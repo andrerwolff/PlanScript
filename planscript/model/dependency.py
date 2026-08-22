@@ -11,12 +11,12 @@ class DependencyType(Enum):
     FINISH_FINISH = "FF"
     START_FINISH = "SF"
 
-@dataclass(frozen=True)
+@dataclass
 class Dependency:
-    predecessor: str
-    successor: str
+    predecessor: Task
+    successor: Task
     type: DependencyType = DependencyType.FINISH_START
     lag: timedelta = timedelta(0)
 
     def __str__(self):
-        return f"{self.predecessor} -> {self.successor} ({self.type.value}, Lag: {self.lag.days}d)"
+        return f"{self.predecessor.number} -> {self.successor.number} ({self.type.value}, Lag: {self.lag.days}d)"

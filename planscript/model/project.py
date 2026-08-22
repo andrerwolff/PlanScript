@@ -30,13 +30,14 @@ class Project:
     def remove_task(self, task_number: str) -> None:
         if task_number not in self.tasks:
             raise ValueError(f"Task with number '{task_number}' does not exist in the project.")
+ # Remove related dependencies
+        dependencies_to_remove = []
         for dependency in self.dependencies:
-            if dependency.predecessor == task_number or dependency.successor == task_number:
-                try:
-                    print(f"--Found related dependency '{dependency}', removing...")
-                    self.remove_dependency(dependency)
-                except ValueError:
-                    print(f"Could not remove dependency '{dependency}' from project '{self.name}'.")
+            if dependency.predecessor == self.tasks[task_number] or dependency.successor == self.tasks[task_number]:
+                print(f"--Found related dependency '{dependency}', removing...")
+                dependencies_to_remove.append(dependency)
+        for dependency in dependencies_to_remove:
+            self.remove_dependency(dependency)
                 
         try:
             del self.tasks[task_number]
@@ -46,7 +47,6 @@ class Project:
         self.sort_tasks()
 
     def renumber_task(self, old_number: str, new_number: str) -> None:
-        #TODO: Check if task is a predecessor or successor in any dependencies before renumbering
         if old_number not in self.tasks:
             raise ValueError(f"Task with number '{old_number}' does not exist in the project.")
         if new_number in self.tasks:
@@ -64,10 +64,11 @@ class Project:
     def list_tasks(self):
         return list(self.tasks.values())
 
-    def add_dependency(self, predecessor: str, successor: str, type: DependencyType = DependencyType.FINISH_START, lag: timedelta = timedelta(days=0)) -> None:
-        if predecessor not in self.tasks:
+    def add_dependency(self, predecessor: Task, successor: Task, type: DependencyType = DependencyType.FINISH_START, lag: timedelta = timedelta(days=0)) -> None:
+        print(predecessor)
+        if predecessor not in self.tasks.values():
             raise ValueError(f"Predecessor task with number '{predecessor}' does not exist in the project.")
-        if successor not in self.tasks:
+        if successor not in self.tasks.values():
             raise ValueError(f"Successor task with number '{successor}' does not exist in the project.")
         if predecessor == successor:
             raise ValueError("Predecessor and successor cannot be the same task.")
@@ -89,6 +90,6 @@ class Project:
     def get_predecessors(self, task: Task):
         predecessors = []
         for dependency in self.dependencies:
-            if dependency.successor == task.number:
+            if dependency.successor == task:
                 predecessors.append(dependency.predecessor)
         return predecessors
