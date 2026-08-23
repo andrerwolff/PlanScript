@@ -93,3 +93,10 @@ class Project:
             if dependency.successor == task:
                 predecessors.append(dependency.predecessor)
         return predecessors
+
+    def get_successors(self, task: Task):
+        successors = []
+        for dependency in self.dependencies:
+            if dependency.predecessor == task:
+                successors.append(dependency.successor)
+        return successors

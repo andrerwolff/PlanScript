@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from planscript.model import Project, Task, Dependency, DependencyType
 from planscript.cli import display
 from planscript.engine.scheduler import Scheduler
+from planscript.tests import test_projects
 
 
 # Menus
@@ -21,7 +22,11 @@ def main_menu():
                 continue
 
         elif choice == "o":
-            project = open_project()
+            choice2 = input("Select test project: ")
+
+            project_builder = test_projects.TEST_PROJECTS[choice2]
+            project = project_builder()
+
             if project:
                 project_menu(project)
             else:
@@ -57,7 +62,7 @@ def project_menu(project):
 
         elif choice == "v":
             scheduler = Scheduler()
-            scheduler.calculate(project)
+            print(scheduler.calculate(project))
 
         elif choice == "s":
             # Implement save project functionality here
