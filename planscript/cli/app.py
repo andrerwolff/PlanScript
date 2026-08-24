@@ -62,7 +62,12 @@ def project_menu(project):
 
         elif choice == "v":
             scheduler = Scheduler()
-            print(scheduler.calculate(project))
+            try:
+                schedule = scheduler.calculate(project)
+            except ValueError as e:
+                print(f"Scheduling error: {e}")
+                return
+            print(schedule)
 
         elif choice == "s":
             # Implement save project functionality here

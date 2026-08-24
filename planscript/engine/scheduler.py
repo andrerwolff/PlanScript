@@ -2,16 +2,62 @@ from datetime import timedelta
 from planscript.model.project import Project
 from collections import deque
 
+
+class Schedule:
+    def __init__(self, project, ordered_task_ids, early_start, early_finish,
+        late_start, late_finish, total_float, critical_tasks, duration):
+
+        self.project = project
+        self.ordered_task_ids = ordered_task_ids
+        self.early_start = early_start
+        self.early_finish = early_finish
+        self.late_start = late_start
+        self.late_finish = late_finish
+        self.total_float = total_float
+        self.critical_tasks = critical_tasks
+        self.duration = duration
+
+    def __str__(self):
+        print()
+        print(f"    PROJECT: {self.project.name}")
+        print(f"    Duration: {self.duration}")
+        print("~" * 69)
+        print()
+        print(f"|{'ID':<5}|{'TASK':<25}|{'DUR':^5}|{'ES':^5}|{'EF':^5}|{'LS':^5}|{'LF':^5}|{'FLOAT':^5}|")
+        print("-" *69)
+
+        for task_id in self.ordered_task_ids:
+            task = self.project.tasks[task_id]
+
+            d = task.duration.days
+            es = self.early_start[task_id].days
+            ef = self.early_finish[task_id].days
+            ls = self.late_start[task_id].days
+            lf = self.late_finish[task_id].days
+            f = self.total_float[task_id].days
+
+            print(f" {task_id:<5} {task.name:<25} {d:^5} {es:^5} {ef:^5} {ls:^5} {lf:^5} {f:^5} ")
+        return f"-"* 69
+
 class Scheduler:
     
     def calculate(self, project):
-        orderd_task_ids = self._topological_sort(project)
-        early_start, early_finish = self._forward_pass(project, orderd_task_ids)
-        late_start, late_finish = self._backward_pass(project, orderd_task_ids, early_finish)
+        ordered_task_ids = self._topological_sort(project)
+        early_start, early_finish = self._forward_pass(project, ordered_task_ids)
+        late_start, late_finish, duration = self._backward_pass(project, ordered_task_ids, early_finish)
+        total_float = self._float(ordered_task_ids, early_start, late_start)
+        critical_tasks = self._critical_tasks(ordered_task_ids, total_float)
 
-        return early_start, early_finish, late_start, late_finish
-
-            
+        return Schedule(project = project,
+            ordered_task_ids = ordered_task_ids,
+            early_start = early_start,
+            early_finish = early_finish,
+            late_start = late_start,
+            late_finish = late_finish,
+            total_float= total_float,
+            critical_tasks = critical_tasks,
+            duration = duration)
+       
 
     def _topological_sort(self, project):
         ordered_task_ids = []
@@ -39,7 +85,6 @@ class Scheduler:
 
         if len(ordered_task_ids) != len(project.tasks):
             raise ValueError("Circular dependency detected")
-        
         return ordered_task_ids
 
     def _forward_pass(self, project, ordered_task_ids):
@@ -50,6 +95,7 @@ class Scheduler:
             task = project.tasks[task_id]
             preds = project.get_predecessors(task)
             if not preds:
+                
                 early_start[task_id] = timedelta(0)
             else:
                 max_pef = timedelta(0)
@@ -57,7 +103,7 @@ class Scheduler:
                     if early_finish[pred.number] > max_pef:
                         max_pef = early_finish[pred.number]
                 early_start[task_id] = max_pef
-
+            
             early_finish[task_id] = early_start[task_id] + task.duration
 
         return early_start, early_finish
@@ -66,7 +112,6 @@ class Scheduler:
         project_duration = max(early_finish.values())
         late_start = {}
         late_finish = {}
-
         for task_id in reversed(ordered_task_ids):
             task = project.tasks[task_id]
             succs = project.get_successors(task)
@@ -76,7 +121,7 @@ class Scheduler:
                 min_sls = project_duration
                 for succ in succs:
                     if late_start[succ.number] < min_sls:
-                        min_sls = finish
+                        min_sls = late_start[succ.number]
                 finish = min_sls
 
             start = finish - task.duration
@@ -84,4 +129,20 @@ class Scheduler:
             late_start[task_id] = start
             late_finish[task_id] = finish
 
-        return late_start, late_finish
+        return late_start, late_finish, project_duration
+
+    def _float(self, ordered_task_ids, early_start, late_start):
+        total_float = {}
+
+        for task_id in ordered_task_ids:
+            total_float[task_id] = late_start[task_id] - early_start[task_id]
+        return total_float
+
+    def _critical_tasks(self, ordered_task_ids, total_float):
+        critical_tasks = []
+        for task_id in ordered_task_ids:
+            if total_float[task_id] == timedelta(0):
+                critical_tasks.append(task_id)
+        return critical_tasks
+
+    

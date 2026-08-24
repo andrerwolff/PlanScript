@@ -1,9 +1,6 @@
 from datetime import timedelta
 
 from planscript.model.project import Project
-from datetime import timedelta
-
-from planscript.model.project import Project
 from planscript.model.task import Task
 
 
@@ -48,9 +45,9 @@ def simple_linear():
     project.add_task(task3)
     project.add_task(task4)
 
-    project.add_dependency(task2, task1)
-    project.add_dependency(task3, task2)
-    project.add_dependency(task4, task3)
+    project.add_dependency(task1, task2)
+    project.add_dependency(task2, task3)
+    project.add_dependency(task3, task4)
 
     return project
 
@@ -154,13 +151,13 @@ def branch_and_merge():
     project.add_task(task4)
     project.add_task(task5)
 
-    project.add_dependency(task2, task1)
-    project.add_dependency(task3, task1)
-    project.add_dependency(task4, task1)
+    project.add_dependency(task1, task2)
+    project.add_dependency(task1, task3)
+    project.add_dependency(task1, task4)
 
-    project.add_dependency(task5, task2)
-    project.add_dependency(task5, task3)
-    project.add_dependency(task5, task4)
+    project.add_dependency(task2, task5)
+    project.add_dependency(task3, task5)
+    project.add_dependency(task4, task5)
 
     return project
 
@@ -225,13 +222,13 @@ def complex_network():
     project.add_task(task5)
     project.add_task(task6)
 
-    project.add_dependency(task2, task1)
-    project.add_dependency(task3, task1)
-    project.add_dependency(task4, task3)
-    project.add_dependency(task5, task4)
+    project.add_dependency(task1, task2)
+    project.add_dependency(task1, task3)
+    project.add_dependency(task3, task4)
+    project.add_dependency(task4, task5)
 
-    project.add_dependency(task6, task2)
-    project.add_dependency(task6, task5)
+    project.add_dependency(task2, task6)
+    project.add_dependency(task5, task6)
 
     return project
 
@@ -304,13 +301,13 @@ def multiple_starts_and_ends():
     project.add_task(task5)
     project.add_task(task6)
 
-    project.add_dependency(task3, task1)
-    project.add_dependency(task4, task2)
+    project.add_dependency(task1, task3)
+    project.add_dependency(task2, task4)
 
-    project.add_dependency(task5, task3)
+    project.add_dependency(task3, task5)
 
-    project.add_dependency(task6, task3)
-    project.add_dependency(task6, task4)
+    project.add_dependency(task3, task6)
+    project.add_dependency(task4, task6)
 
     return project
 
@@ -351,9 +348,9 @@ def circular_dependency():
     project.add_task(task2)
     project.add_task(task3)
 
-    project.add_dependency(task2, task1)
-    project.add_dependency(task3, task2)
-    project.add_dependency(task1, task3)
+    project.add_dependency(task1, task2)
+    project.add_dependency(task2, task3)
+    project.add_dependency(task3, task1)
 
     return project
 
@@ -393,8 +390,8 @@ def zero_duration():
     project.add_task(task2)
     project.add_task(task3)
 
-    project.add_dependency(task2, task1)
-    project.add_dependency(task3, task2)
+    project.add_dependency(task1, task2)
+    project.add_dependency(task2, task3)
 
     return project
 

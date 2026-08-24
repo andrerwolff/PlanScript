@@ -158,3 +158,10 @@ def select_dependency(project, action: str):
     else:
         print("Invalid dependency index.")
         return
+
+def view_schedule(project, schedule):
+    print()
+    print(f"  PROJECT: {project.name}")
+    print(f"Duration: {schedule.duration}")
+    print("=" * 50)
+    print()
