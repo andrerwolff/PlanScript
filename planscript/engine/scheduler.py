@@ -5,7 +5,7 @@ from collections import deque
 
 class Schedule:
     def __init__(self, project, ordered_task_ids, early_start, early_finish,
-        late_start, late_finish, total_float, critical_tasks, duration):
+        late_start, late_finish, total_float, critical_tasks, critical_paths, duration):
 
         self.project = project
         self.ordered_task_ids = ordered_task_ids
@@ -15,6 +15,7 @@ class Schedule:
         self.late_finish = late_finish
         self.total_float = total_float
         self.critical_tasks = critical_tasks
+        self.critical_paths = critical_paths
         self.duration = duration
 
     def __str__(self):
@@ -37,6 +38,12 @@ class Schedule:
             f = self.total_float[task_id].days
 
             print(f" {task_id:<5} {task.name:<25} {d:^5} {es:^5} {ef:^5} {ls:^5} {lf:^5} {f:^5} ")
+        print(f"-"* 69)
+        print()
+        print("Critical Path(s):")
+        for path in self.critical_paths:
+            print(" → ".join(str(task) for task in path))
+        input("Press Enter to continue...")
         return f"-"* 69
 
 class Scheduler:
@@ -47,6 +54,7 @@ class Scheduler:
         late_start, late_finish, duration = self._backward_pass(project, ordered_task_ids, early_finish)
         total_float = self._float(ordered_task_ids, early_start, late_start)
         critical_tasks = self._critical_tasks(ordered_task_ids, total_float)
+        critical_paths = self._find_critical_paths(project, critical_tasks)
 
         return Schedule(project = project,
             ordered_task_ids = ordered_task_ids,
@@ -56,6 +64,7 @@ class Scheduler:
             late_finish = late_finish,
             total_float= total_float,
             critical_tasks = critical_tasks,
+            critical_paths = critical_paths,
             duration = duration)
        
 
@@ -145,4 +154,46 @@ class Scheduler:
                 critical_tasks.append(task_id)
         return critical_tasks
 
+    def _find_critical_paths(self, project, critical_tasks):
+        critical = set(critical_tasks)
+
+        paths = []
+
+        # Find critical tasks with no critical predecessors.
+        starts = []
+
+        for task_id in critical:
+            task = project.tasks[task_id]
+
+            has_critical_predecessor = False
+            for pred in project.get_predecessors(task):
+                if pred.number in critical:
+                    has_critical_predecessor = True
+                    break
+
+            if not has_critical_predecessor:
+                starts.append(task_id)
+
+        # Walk forward from each critical starting task.
+        def walk(task_id, path):
+            path = path + [task_id]
+
+            task = project.tasks[task_id]
+
+            critical_successors = []
+            for succ in project.get_successors(task):
+                if succ.number in critical:
+                    critical_successors.append(succ.number)
+
+            if not critical_successors:
+                paths.append(path)
+                return
+
+            for successor_id in critical_successors:
+                walk(successor_id, path)
+
+        for start_id in starts:
+            walk(start_id, [])
+
+        return paths
     
