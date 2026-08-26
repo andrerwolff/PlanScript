@@ -1,5 +1,6 @@
 from datetime import timedelta
 from planscript.model.project import Project
+from planscript.model.dependency import DependencyType
 from collections import deque
 
 
@@ -102,18 +103,38 @@ class Scheduler:
 
         for task_id in ordered_task_ids:
             task = project.tasks[task_id]
-            preds = project.get_predecessors(task)
-            if not preds:
-                
+            dependencies = project.get_incoming_dependencies(task)
+
+            if not dependencies:
                 early_start[task_id] = timedelta(0)
+
             else:
-                max_pef = timedelta(0)
-                for pred in preds:
-                    if early_finish[pred.number] > max_pef:
-                        max_pef = early_finish[pred.number]
-                early_start[task_id] = max_pef
-            
-            early_finish[task_id] = early_start[task_id] + task.duration
+                candidate_es_values = []
+                for dependency in dependencies:
+                    predecessor = dependency.predecessor
+                    predecessor_id = predecessor.number
+                    if dependency.dependency_type == DependencyType.FINISH_START:
+                        candidate_es = (early_finish[predecessor_id] + dependency.lag)
+                        
+                    elif dependency.dependency_type == DependencyType.START_START:
+                        candidate_es = (early_start[predecessor_id] + dependency.lag)
+
+                    elif dependency.dependency_type == DependencyType.FINISH_FINISH:
+                        candidate_ef = (early_finish[predecessor_id] + dependency.lag)
+                        candidate_es = (candidate_ef - task.duration)
+
+                    elif dependency.dependency_type == DependencyType.START_FINISH:
+                        candidate_ef = (early_start[predecessor_id] + dependency.lag)
+                        candidate_es = (candidate_ef - task.duration)
+
+                    else:
+                        raise ValueError("Looks like an issue with dependency type - Forward Pass")
+
+                    candidate_es_values.append(candidate_es)
+                #early_start[task_id] = max(timedelta(0), max(candidate_es_values)) for clamp to 0
+                early_start[task_id] = max(candidate_es_values)
+
+            early_finish[task_id] = (early_start[task_id] + task.duration)
 
         return early_start, early_finish
 
@@ -123,20 +144,33 @@ class Scheduler:
         late_finish = {}
         for task_id in reversed(ordered_task_ids):
             task = project.tasks[task_id]
-            succs = project.get_successors(task)
-            if not succs:
-                finish = project_duration
-            else:
-                min_sls = project_duration
-                for succ in succs:
-                    if late_start[succ.number] < min_sls:
-                        min_sls = late_start[succ.number]
-                finish = min_sls
+            #----------------------------
+            dependencies = project.get_outgoing_dependencies(task)
+            candidate_lf_values = [project_duration]
+            for dependency in dependencies:
+                successor = dependency.successor
+                successor_id = successor.number
 
-            start = finish - task.duration
+                if dependency.dependency_type == DependencyType.FINISH_START:
+                    candidate_lf = (late_start[successor.number] - dependency.lag)
 
-            late_start[task_id] = start
-            late_finish[task_id] = finish
+                elif dependency.dependency_type == DependencyType.START_START:
+                    candidate_ls = (late_start[successor.number] - dependency.lag)
+                    candidate_lf = (candidate_ls + task.duration)
+
+                elif dependency.dependency_type == DependencyType.FINISH_FINISH:
+                    candidate_lf = (late_finish[successor_id] - dependency.lag)
+
+                elif dependency.dependency_type == DependencyType.START_FINISH:
+                    candidate_ls = (late_finish[successor_id] - dependency.lag)
+                    candidate_lf = (candidate_ls + task.duration)
+
+                else:
+                    raise ValueError("Looks like an issue with dependency type - Backward Pass")
+                
+                candidate_lf_values.append(candidate_lf)
+            late_finish[task_id] = min(candidate_lf_values)
+            late_start[task_id] = (late_finish[task_id] - task.duration)
 
         return late_start, late_finish, project_duration
 

@@ -41,7 +41,7 @@ def main_menu():
             break
 
         else:
-            print("Invalid Option mm.")
+            print("Invalid Option.")
             continue
 
 def project_menu(project):

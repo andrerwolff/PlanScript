@@ -64,8 +64,7 @@ class Project:
     def list_tasks(self):
         return list(self.tasks.values())
 
-    def add_dependency(self, predecessor: Task, successor: Task, type: DependencyType = DependencyType.FINISH_START, lag: timedelta = timedelta(days=0)) -> None:
-        print(predecessor)
+    def add_dependency(self, predecessor: Task, successor: Task, dependency_type: DependencyType = DependencyType.FINISH_START, lag: timedelta = timedelta(days=0)) -> None:
         if predecessor not in self.tasks.values():
             raise ValueError(f"Predecessor task with number '{predecessor}' does not exist in the project.")
         if successor not in self.tasks.values():
@@ -73,7 +72,10 @@ class Project:
         if predecessor == successor:
             raise ValueError("Predecessor and successor cannot be the same task.")
 
-        dependency = Dependency(predecessor=predecessor, successor=successor, type=type, lag=lag)
+        if isinstance(dependency_type, str):
+            dependency_type = DependencyType(dependency_type)
+        
+        dependency = Dependency(predecessor=predecessor, successor=successor, dependency_type=dependency_type, lag=lag)
         self.dependencies.append(dependency)
         print(f"Dependency added: {dependency}")
 
@@ -100,3 +102,17 @@ class Project:
             if dependency.predecessor == task:
                 successors.append(dependency.successor)
         return successors
+
+    def get_incoming_dependencies(self, task:Task):
+        incoming_dependencies = []
+        for dependency in self.dependencies:
+            if dependency.successor == task:
+                incoming_dependencies.append(dependency)
+        return incoming_dependencies
+
+    def get_outgoing_dependencies(self, task:Task):
+        outgoing_dependencies = []
+        for dependency in self.dependencies:
+            if dependency.predecessor == task:
+                outgoing_dependencies.append(dependency)
+        return outgoing_dependencies

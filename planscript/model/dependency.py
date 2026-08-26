@@ -15,8 +15,8 @@ class DependencyType(Enum):
 class Dependency:
     predecessor: Task
     successor: Task
-    type: DependencyType = DependencyType.FINISH_START
+    dependency_type: DependencyType = DependencyType.FINISH_START
     lag: timedelta = timedelta(0)
 
     def __str__(self):
-        return f"{self.predecessor.number} -> {self.successor.number} ({self.type.value}, Lag: {self.lag.days}d)"
+        return f"{self.predecessor.number} -> {self.successor.number} ({self.dependency_type.value}, Lag: {self.lag.days}d)"
