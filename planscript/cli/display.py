@@ -115,7 +115,8 @@ def show_depend_edit_menu(project, dependency):
 def display_task_with_dependencies(project, task):
     predecessors = project.get_predecessors(task)
 
-    if predecessors:        
+    if predecessors:
+        #TODO add type and lag values here        
         dependency_info = ", ".join(predecessor.number for predecessor in predecessors)
     else:
         dependency_info = "-"

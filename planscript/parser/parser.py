@@ -24,10 +24,7 @@ class Parser:
         r"^dependency\s+"
         r"(?P<predecessor>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
         r">\s+"
-        r"(?P<successor>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)"
-        r"\s*"
-        r"(?:\s+(?P<type>FS|SS|FF|SF))?"
-        r"(?:\s*(?P<lag>[+-]\d+(?:\.\d+)?[hdwm]?))?$",
+        r"(?P<relationship>.+)$",
         re.IGNORECASE
     )
 
@@ -119,9 +116,13 @@ class Parser:
             if match:
                 task_id = match.group("id")
                 description = match.group("description").strip()
-                #TODO switch to time delta
+
                 duration = self.parse_duration(match.group("duration"))
 
+                if duration == None:
+                    print("HERE")
+                    print(task_id, duration)
+                    continue
                 task = Task(task_id, description, duration)
 
                 project.add_task(task)
@@ -133,15 +134,15 @@ class Parser:
             match = self.DEPENDENCY_PATTERN.match(line)
             if match:
                 predecessor_id = match.group("predecessor")
-                successor_id = match.group("successor")
+                relationship = match.group("relationship")
 
-                dependency_type = match.group("type")
+                successor_id, dependency_type, lag = self.parse_dependency(relationship, project, line_number)
+
                 if dependency_type is None:
                     dependency_type = "FS"
                 else:
                     dependency_type = dependency_type.upper()
 
-                lag = match.group("lag")
                 if lag is None:
                     lag = "0d"
                 lag = self.parse_duration(lag)
@@ -192,3 +193,53 @@ class Parser:
             return timedelta(days=number*30)
 
         raise ParseError(f"Invalid duration: {value}")
+
+    def parse_dependency ( self, relationship, project, line_number):
+        relationship = relationship.strip()
+
+        # ----------------------------------------
+        # Normal form
+        # ----------------------------------------
+        match = re.fullmatch(
+            r"(?P<successor>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)"
+            r"(?:\s+(?P<type>FS|SS|FF|SF))?"
+            r"(?:\s*(?P<lag>[+-]\d+(?:\.\d+)?[hdwm]?))?",
+            relationship,
+            re.IGNORECASE
+        )
+
+        if match:
+            successor_id = match.group("successor")
+            if successor_id in project.tasks:
+                return (
+                    successor_id,
+                    match.group("type"),
+                    match.group("lag"),
+                )
+        # ----------------------------------------
+        # Compact form
+        # ----------------------------------------
+        candidates = []
+
+        for task_id in project.tasks:
+            if not relationship.lower().startswith(task_id.lower()):
+                continue
+            remainder = relationship[len(task_id):]
+
+            match = re.fullmatch(
+                r"(?P<type>FS|SS|FF|SF)?"
+                r"(?P<lag>[+-]\d+(?:\.\d+)?[hdwm]?)?",
+                remainder,
+                re.IGNORECASE
+            )
+
+            if match:
+                candidates.append((task_id, match.group("type"), match.group("lag")))
+
+        if len(candidates) == 1:
+            return candidates[0]
+
+        if len(candidates) == 0:
+            raise ParseError(f"Line {line_number}: could not determine successor task or dependency type from '{relationship}'")
+
+        raise ParseError(f"Line {line_number}: ambiguous dependency '{relationship}'; add a space between the task ID and dependency type")
