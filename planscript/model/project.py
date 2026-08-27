@@ -16,7 +16,7 @@ class Project:
 
     tasks: dict[str, Task] = field(default_factory=dict)
     dependencies: list[Dependency] = field(default_factory=list)
-    calendars: dict[str, Calendar] = field(default_factory=dict)
+    calendar: dict[str, Calendar] = field(default_factory=dict)
 
     metadata: dict = field(default_factory=dict)
 

@@ -1,9 +1,11 @@
 from datetime import date, timedelta
+from pathlib import Path
 
 from planscript.model import Project, Task, Dependency, DependencyType
 from planscript.cli import display
 from planscript.engine.scheduler import Scheduler
 from planscript.tests import test_projects
+from planscript.parser.parser import Parser, ParseError
 
 
 # Menus
@@ -23,9 +25,22 @@ def main_menu():
 
         elif choice == "o":
             choice2 = input("Select test project: ")
+            if choice2 == "f":
+                file = Path("examples/simple.plan")
+                text = file.read_text(encoding="utf-8")
+                parser = Parser()
+                try:
+                    project = parser.parse(text)
+                except ParseError as e:
+                    print(f"Parse error: {e}")
+                    return
 
-            project_builder = test_projects.TEST_PROJECTS[choice2]
-            project = project_builder()
+                print(f"Project: {project.name}")
+                print(f"Tasks: {len(project.tasks)}")
+                print(f"Dependencies: {len(project.dependencies)}")
+            else:
+                project_builder = test_projects.TEST_PROJECTS[choice2]
+                project = project_builder()
 
             if project:
                 project_menu(project)
