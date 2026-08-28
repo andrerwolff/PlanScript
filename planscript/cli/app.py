@@ -33,11 +33,13 @@ def main_menu():
                     project = parser.parse(text)
                 except ParseError as e:
                     print(f"Parse error: {e}")
-                    return
+                    input("\nPress Enter to return...")
+                    continue
 
                 print(f"Project: {project.name}")
                 print(f"Tasks: {len(project.tasks)}")
                 print(f"Dependencies: {len(project.dependencies)}")
+                
             else:
                 project_builder = test_projects.TEST_PROJECTS[choice2]
                 project = project_builder()
@@ -204,7 +206,7 @@ def edit_dependency_menu(project, dependency):
         choice = display.show_depend_edit_menu(project, dependency)
 
         if choice == "p":
-            #TODO add check if task is the same as successor
+            # TODO add check if task is the same as successor
             new_number = input("Enter new predecessor task number: ").strip()
             if new_number not in project.tasks:
                 print(f"Task number '{new_number}' does not exist in the project. Please choose a different number.")
@@ -311,7 +313,7 @@ def new_task(project):
 
 #Dependency Functions
 def new_dependency(project):
-    #TODO control for predecessor and successor being the same number
+    # TODO: control for predecessor and successor being the same number
     print("\nNEW DEPENDENCY")
     print("-" * 50)
     print()

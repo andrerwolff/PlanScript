@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import timedelta, date
 
 from planscript.model import dependency
 from planscript.model.calendar import Calendar
@@ -11,8 +11,8 @@ from planscript.model.task import Task
 class Project:
     name: str
 
-    start: str | None = None
-    finish: str | None = None
+    start: date | None = None
+    finish: date | None = None
 
     tasks: dict[str, Task] = field(default_factory=dict)
     dependencies: list[Dependency] = field(default_factory=list)

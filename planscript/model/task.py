@@ -8,12 +8,12 @@ class Task:
 
     duration: timedelta | None = None
 
-    start: date | None = None
-    finish: date | None = None
+    #start: date | None = None
+    #finish: date | None = None
 
-    calendar: str | None = None
+    #calendar: str | None = None
 
-    constraints: list = field(default_factory=list)
+    #constraints: list = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
 
     def __str__(self):
