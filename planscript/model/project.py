@@ -11,8 +11,8 @@ from planscript.model.task import Task
 class Project:
     name: str
 
-    start: date | None = None
-    finish: date | None = None
+    start_date: date | None = None
+    finish_date: date | None = None
 
     tasks: dict[str, Task] = field(default_factory=dict)
     dependencies: list[Dependency] = field(default_factory=list)
@@ -34,14 +34,14 @@ class Project:
         dependencies_to_remove = []
         for dependency in self.dependencies:
             if dependency.predecessor == self.tasks[task_number] or dependency.successor == self.tasks[task_number]:
-                print(f"--Found related dependency '{dependency}', removing...")
+                #print(f"--Found related dependency '{dependency}', removing...")
                 dependencies_to_remove.append(dependency)
         for dependency in dependencies_to_remove:
             self.remove_dependency(dependency)
                 
         try:
             del self.tasks[task_number]
-            print(f"Task '{task_number}' removed from project '{self.name}'.")
+            #print(f"Task '{task_number}' removed from project '{self.name}'.")
         except KeyError:
             raise ValueError(f"Task with number '{task_number}' does not exist in the project.")
         self.sort_tasks()
@@ -59,7 +59,7 @@ class Project:
 
     def sort_tasks(self):
         self.tasks = dict(sorted(self.tasks.items(), key=lambda item: item[0]))
-        print(f"Tasks in project '{self.name}' sorted by task number.")
+        #print(f"Tasks in project '{self.name}' sorted by task number.")
 
     def list_tasks(self):
         return list(self.tasks.values())
@@ -77,7 +77,7 @@ class Project:
         
         dependency = Dependency(predecessor=predecessor, successor=successor, dependency_type=dependency_type, lag=lag)
         self.dependencies.append(dependency)
-        print(f"Dependency added: {dependency}")
+        #print(f"Dependency added: {dependency}")
 
     def remove_dependency(self, dependency: Dependency) -> None:
         if dependency not in self.dependencies:
@@ -85,7 +85,7 @@ class Project:
 
         try:
             self.dependencies.remove(dependency)
-            print(f"Dependency '{dependency.predecessor} -> {dependency.successor}' removed from project '{self.name}'.")
+            #print(f"Dependency '{dependency.predecessor} -> {dependency.successor}' removed from project '{self.name}'.")
         except ValueError:
             print(f"No dependency found from '{dependency.predecessor}' to '{dependency.successor}' in project '{self.name}'.")
 

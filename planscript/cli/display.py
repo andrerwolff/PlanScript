@@ -160,9 +160,57 @@ def select_dependency(project, action: str):
         print("Invalid dependency index.")
         return
 
-def view_schedule(project, schedule):
+def view_schedule_calculated(project, schedule):
     print()
-    print(f"  PROJECT: {project.name}")
-    print(f"Duration: {schedule.duration}")
-    print("=" * 50)
+    print(f"    PROJECT: {project.name}")
+    print(f"    Duration: {schedule.duration}")
+    print(f"    Target Start: {schedule.project.start_date}")
+    print(f"    Target Finish: {schedule.project.finish_date}")
+    print("~" * 69)
     print()
+    print(f"|{'ID':<5}|{'TASK':<25}|{'DUR':^5}|{'ES':^5}|{'EF':^5}|{'LS':^5}|{'LF':^5}|{'FLOAT':^5}|")
+    print("-" *69)
+
+    for task_id in schedule.ordered_task_ids:
+        task = schedule.project.tasks[task_id]
+
+        d = task.duration.days
+        es = schedule.early_start[task_id].days
+        ef = schedule.early_finish[task_id].days
+        ls = schedule.late_start[task_id].days
+        lf = schedule.late_finish[task_id].days
+        f = schedule.total_float[task_id].days
+
+        print(f" {task_id:<5} {task.name:<25} {d:^5} {es:^5} {ef:^5} {ls:^5} {lf:^5} {f:^5} ")
+    print(f"-"* 69)
+    print()
+    print("Critical Path(s):")
+    for path in schedule.critical_paths:
+        print(" → ".join(str(task) for task in path))
+    input("Press Enter to continue...")
+
+def view_schedule_scheduled(project, schedule):
+    print()
+    print(f"    PROJECT: {project.name}")
+    print(f"    Duration: {schedule.duration}")
+    print(f"    Target Start: {schedule.project.start_date}")
+    print(f"    Target Finish: {schedule.project.finish_date}")
+    print("~" * 69)
+    print()
+    print(f"|{'ID':<5}|{'TASK':<25}|{'START':^10}|{'END':^10}|{'FLOAT':^7}|")
+    print("-" *69)
+
+    for task_id in schedule.ordered_task_ids:
+        task = schedule.project.tasks[task_id]
+        start = schedule.start_dates[task_id]
+        end = schedule.finish_dates[task_id]
+        f = schedule.total_float[task_id].days
+
+        print(f" {task_id:<5} {task.name:<25} {start.strftime('%#m/%#d/%y'):^10} {end.strftime('%#m/%#d/%y'):^10} {f:^7} ")
+    print(f"-"* 69)
+    print()
+    print("Critical Path(s):")
+    for path in schedule.critical_paths:
+        print(" → ".join(str(task) for task in path))
+    input("Press Enter to continue...")
+    return f"-"* 69

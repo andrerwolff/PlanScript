@@ -16,11 +16,11 @@
 
 ## Current
 
-* [ ] Expand parser validation
-* [ ] Build comprehensive parser tests using `unittest`
-* [ ] Test multiple malformed inputs
-* [ ] Confirm dependency notation/ambiguity rules
-* [ ] Integrate parser with scheduling engine
+* [x] Expand parser validation
+* [x] Build comprehensive parser tests using `unittest`
+* [x] Test multiple malformed inputs
+* [x] Confirm dependency notation/ambiguity rules
+* [x] Integrate parser with scheduling engine
 
 ## Next
 

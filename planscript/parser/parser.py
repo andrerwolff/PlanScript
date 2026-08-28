@@ -127,7 +127,7 @@ class Parser:
                 if "start" in seen_project_attributes:
                     raise ParseError(f"Line {line_number}: duplicate start declaration")
                 
-                project.start = self.parse_date(match.group("date"), line_number)
+                project.start_date = self.parse_date(match.group("date"), line_number)
                 seen_project_attributes.add("start")
                 current_entry = project
                 continue
@@ -138,7 +138,7 @@ class Parser:
                 if "finish" in seen_project_attributes:
                     raise ParseError(f"Line {line_number}: duplicate finish declaration")
                 
-                project.finish = self.parse_date(match.group("date"), line_number)
+                project.finish_date = self.parse_date(match.group("date"), line_number)
                 seen_project_attributes.add("finish")
                 current_entry = project
                 continue
@@ -158,7 +158,7 @@ class Parser:
 
                 if duration == None:
                     # TODO implement milestones
-                    print(f"{task_id} is summary")
+                    # print(f"{task_id} is summary")
                     continue
 
                 if duration < timedelta(0):
@@ -236,7 +236,7 @@ class Parser:
         elif unit == "m":
             # Define what "month" means here before implementing this.
             
-            print("Month durations are not yet supported")
+           # print("Month durations are not yet supported")
             return timedelta(days=number*30)
 
         raise ParseError(f"Invalid duration: {value}")
@@ -397,9 +397,9 @@ class Parser:
 
     def validate_project(self, project):
         if (
-            project.start is not None
-            and project.finish is not None
-            and project.start > project.finish
+            project.start_date is not None
+            and project.finish_date is not None
+            and project.start_date > project.finish_date
         ):
             raise ParseError("Project start date cannot be after finish date.")
         # TODO - add other validations?

@@ -14,7 +14,7 @@ task 1 Project Management
 - Owner: Design Team
 - Description: Handle management of project including meetings and invoicing
 
-task 1.1 Project Initiation Meeting 0d
+task 1.1 Project Initiation 0d
 task 1.2 PMP 2w
 - Owner: Design Team
 - Description: Generate PMP and QMP and Schedule after initiation meetings
@@ -44,4 +44,4 @@ dependency 4.1.1 > 4.1.2 FS
 dependency 4.1.2 > 4.2.1 FS
 Dependency 4.2.1 > 4.2.2
 dependency 4.2.2 > 4.2.3
-dependency 4.2.3 > 4.2.4FS
+dependency 4.2.3 > 4.2.4 FS

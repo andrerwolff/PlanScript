@@ -84,7 +84,7 @@ def project_menu(project):
             except ValueError as e:
                 print(f"Scheduling error: {e}")
                 return
-            print(schedule)
+            display.view_schedule_scheduled(project, schedule)
 
         elif choice == "s":
             # Implement save project functionality here
@@ -198,7 +198,7 @@ def dependency_menu(project):
             break
 
         else:
-            print("Invalid Option d.")
+            print("Invalid Option.")
             continue
 
 def edit_dependency_menu(project, dependency):

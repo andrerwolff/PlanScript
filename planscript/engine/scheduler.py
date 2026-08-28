@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, date
 from planscript.model.project import Project
 from planscript.model.dependency import DependencyType
 from collections import deque
@@ -6,7 +6,8 @@ from collections import deque
 
 class Schedule:
     def __init__(self, project, ordered_task_ids, early_start, early_finish,
-        late_start, late_finish, total_float, critical_tasks, critical_paths, duration):
+        late_start, late_finish, total_float, critical_tasks, critical_paths, duration,
+        start_dates, finish_dates):
 
         self.project = project
         self.ordered_task_ids = ordered_task_ids
@@ -18,34 +19,8 @@ class Schedule:
         self.critical_tasks = critical_tasks
         self.critical_paths = critical_paths
         self.duration = duration
-
-    def __str__(self):
-        print()
-        print(f"    PROJECT: {self.project.name}")
-        print(f"    Duration: {self.duration}")
-        print("~" * 69)
-        print()
-        print(f"|{'ID':<5}|{'TASK':<25}|{'DUR':^5}|{'ES':^5}|{'EF':^5}|{'LS':^5}|{'LF':^5}|{'FLOAT':^5}|")
-        print("-" *69)
-
-        for task_id in self.ordered_task_ids:
-            task = self.project.tasks[task_id]
-
-            d = task.duration.days
-            es = self.early_start[task_id].days
-            ef = self.early_finish[task_id].days
-            ls = self.late_start[task_id].days
-            lf = self.late_finish[task_id].days
-            f = self.total_float[task_id].days
-
-            print(f" {task_id:<5} {task.name:<25} {d:^5} {es:^5} {ef:^5} {ls:^5} {lf:^5} {f:^5} ")
-        print(f"-"* 69)
-        print()
-        print("Critical Path(s):")
-        for path in self.critical_paths:
-            print(" → ".join(str(task) for task in path))
-        input("Press Enter to continue...")
-        return f"-"* 69
+        self.start_dates = start_dates
+        self.finish_dates = finish_dates
 
 class Scheduler:
     
@@ -56,6 +31,7 @@ class Scheduler:
         total_float = self._float(ordered_task_ids, early_start, late_start)
         critical_tasks = self._critical_tasks(ordered_task_ids, total_float)
         critical_paths = self._find_critical_paths(project, critical_tasks)
+        start_dates, finish_dates = self._get_dates(project, early_start, early_finish)
 
         return Schedule(project = project,
             ordered_task_ids = ordered_task_ids,
@@ -66,7 +42,9 @@ class Scheduler:
             total_float= total_float,
             critical_tasks = critical_tasks,
             critical_paths = critical_paths,
-            duration = duration)
+            duration = duration,
+            start_dates= start_dates,
+            finish_dates= finish_dates)
        
 
     def _topological_sort(self, project):
@@ -230,4 +208,18 @@ class Scheduler:
             walk(start_id, [])
 
         return paths
-    
+
+    def _get_dates(self, project, early_start, early_finish):
+        if project.start_date is None:
+            start_date = date(2026,1,1)
+        else:   
+            start_date = project.start_date
+        start_dates = {}
+        finish_dates = {}
+        for task_id in early_start:
+            start = start_date + early_start[task_id]
+            start_dates[task_id] = start
+        for task_id in early_finish:
+            finish = start_date + early_finish[task_id]
+            finish_dates[task_id] = finish
+        return start_dates, finish_dates

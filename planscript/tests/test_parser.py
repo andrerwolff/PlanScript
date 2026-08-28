@@ -223,8 +223,8 @@ class TestParser(unittest.TestCase):
 
         self.assertEqual(project.name, "Water Treatment Plant")
         self.assertEqual(project.calendar, "Standard")
-        self.assertEqual(project.start, date(2026,1,5))
-        self.assertEqual(project.finish, date(2026,12,31))
+        self.assertEqual(project.start_date, date(2026,1,5))
+        self.assertEqual(project.finish_date, date(2026,12,31))
 
         self.assertEqual(len(project.tasks), 7)
         self.assertEqual(len(project.dependencies), 5)
@@ -430,7 +430,7 @@ class TestParser(unittest.TestCase):
 
         project = self.parser.parse(text)
 
-        self.assertEqual(project.start, date(2026,1,1))
+        self.assertEqual(project.start_date, date(2026,1,1))
 
     def test_finish(self):
         text = """
@@ -440,7 +440,7 @@ class TestParser(unittest.TestCase):
 
         project = self.parser.parse(text)
 
-        self.assertEqual(project.finish, date(2026,12,31))
+        self.assertEqual(project.finish_date, date(2026,12,31))
 
     # ---------------------------------------------------------
     # Metadata
