@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, date
 
 from planscript.model.project import Project
 from planscript.model.task import Task
@@ -196,6 +196,7 @@ def multiple_starts_and_ends():
     """
 
     project = Project("Test 5 - Multiple Starts and Ends")
+    project.start_date = date(2026,8,1)
 
     task1 = Task("1.1", "Investigation", timedelta(days=3))
     task2 = Task("1.2", "Survey", timedelta(days=5))

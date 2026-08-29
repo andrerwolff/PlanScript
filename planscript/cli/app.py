@@ -6,6 +6,8 @@ from planscript.cli import display
 from planscript.engine.scheduler import Scheduler
 from planscript.tests import test_projects
 from planscript.parser.parser import Parser, ParseError
+from planscript.serializer.plan_serializer import PlanSerializer
+from planscript.cli.gantt import render
 
 
 # Menus
@@ -84,10 +86,15 @@ def project_menu(project):
             except ValueError as e:
                 print(f"Scheduling error: {e}")
                 return
-            display.view_schedule_scheduled(project, schedule)
+            #display.view_schedule_scheduled(project, schedule)
+            #render(project, schedule)
+            schedule_menu(project, schedule)
+
 
         elif choice == "s":
             # Implement save project functionality here
+            serializer = PlanSerializer()
+            print(serializer.serialize(project))
             print("Save Project functionality is not yet implemented.")
             pass
 
@@ -98,6 +105,27 @@ def project_menu(project):
         elif choice == "q":
             print("Exiting the application.")
             exit()
+
+def schedule_menu(project, schedule):
+    while True:
+        choice = display.show_schedule_menu(project, schedule)
+
+        if choice == "c":
+            display.view_schedule_calculated(project, schedule)
+
+        elif choice == "d":
+            display.view_schedule_scheduled(project, schedule)
+
+        elif choice == "g":
+            render(project, schedule)
+
+        elif choice == "b":
+                    break
+        
+        else:
+            print("Invalid Option t.")
+            continue
+        
 
 def task_menu(project):
     while True:

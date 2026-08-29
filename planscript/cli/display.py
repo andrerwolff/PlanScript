@@ -160,6 +160,22 @@ def select_dependency(project, action: str):
         print("Invalid dependency index.")
         return
 
+def show_schedule_menu(project, schedule):
+    print()
+    print("=" * 50)
+    print(f"  Project: {project.name}")
+    print("=" * 50)
+    print()
+    print("  [C] View Schedule Calculated Values")
+    print("  [D] View Schedule Dates")
+    print("  [G] View Gantt Chart")
+    print("  [B] Back to Main Menu")
+    print("  [Q] Quit")
+    print()
+    
+    return input("  Select an option: ").strip().lower()
+    
+
 def view_schedule_calculated(project, schedule):
     print()
     print(f"    PROJECT: {project.name}")
