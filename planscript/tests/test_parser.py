@@ -369,31 +369,31 @@ class TestParser(unittest.TestCase):
     def test_duration_days(self):
         self.assertEqual(
             self.parser.parse_duration("5d"),
-            timedelta(days=5)
+            (timedelta(days=5),"d")
         )
 
     def test_duration_hours(self):
         self.assertEqual(
             self.parser.parse_duration("8h"),
-            timedelta(hours=8)
+            (timedelta(hours=8),"h")
         )
 
     def test_duration_weeks(self):
         self.assertEqual(
             self.parser.parse_duration("2w"),
-            timedelta(weeks=2)
+            (timedelta(weeks=2),"w")
         )
 
     def test_duration_decimal(self):
         self.assertEqual(
             self.parser.parse_duration("2.5d"),
-            timedelta(days=2.5)
+            (timedelta(days=2.5),"d")
         )
 
     def test_duration_without_unit_defaults_to_days(self):
         self.assertEqual(
             self.parser.parse_duration("5"),
-            timedelta(days=5)
+            (timedelta(days=5),"d")
         )
 
     def test_duration_months(self):
@@ -405,7 +405,7 @@ class TestParser(unittest.TestCase):
     def test_duration_is_case_insensitive(self):
         self.assertEqual(
             self.parser.parse_duration("5D"),
-            timedelta(days=5)
+            (timedelta(days=5),"d")
         )
 
     # ---------------------------------------------------------
@@ -544,6 +544,7 @@ class TestParser(unittest.TestCase):
         self.assertEqual(dependency.successor.number, "1.2")
         self.assertEqual(dependency.dependency_type.value, "FS")
         self.assertEqual(dependency.lag, timedelta(0))
+        self.assertEqual(dependency.lag_unit, "d")
 
     def test_dependency_explicit_fs(self):
         text = """
@@ -560,6 +561,7 @@ class TestParser(unittest.TestCase):
         dependency = project.dependencies[0]
 
         self.assertEqual(dependency.dependency_type.value, "FS")
+        self.assertEqual(dependency.lag_unit, "d")
 
     def test_lag_without_type_defaults_to_fs(self):
         text = """
@@ -575,6 +577,7 @@ class TestParser(unittest.TestCase):
 
         self.assertEqual(dependency.dependency_type.value, "FS")
         self.assertEqual(dependency.lag, timedelta(days=2))
+        self.assertEqual(dependency.lag_unit, "d")
 
     def test_negative_lag_without_type_defaults_to_fs(self):
         text = """
@@ -590,6 +593,7 @@ class TestParser(unittest.TestCase):
 
         self.assertEqual(dependency.dependency_type.value, "FS")
         self.assertEqual(dependency.lag, timedelta(days=-2))
+        self.assertEqual(dependency.lag_unit, "d")
 
     # ---------------------------------------------------------
     # Dependency types
@@ -609,6 +613,7 @@ class TestParser(unittest.TestCase):
             project.dependencies[0].dependency_type.value,
             "SS"
         )
+        self.assertEqual(project.dependencies[0].lag_unit, "d")
 
     def test_dependency_ff(self):
         text = """
@@ -660,6 +665,7 @@ class TestParser(unittest.TestCase):
             dependency.lag,
             timedelta(days=2)
         )
+        self.assertEqual(dependency.lag_unit, "d")
 
     def test_negative_lag(self):
         text = """
@@ -677,21 +683,27 @@ class TestParser(unittest.TestCase):
             dependency.lag,
             timedelta(days=-2)
         )
+        self.assertEqual(dependency.lag_unit, "d")
 
     def test_lag_without_sign_defaults_to_positive(self):
         text = """
         project: Test
         task 1.1 A 5d
         task 1.2 B 5d
-        dependency 1.1 > 1.2 FS 2d
+        dependency 1.1 > 1.2 FS 2w
         """
 
         project = self.parser.parse(text)
 
         self.assertEqual(
             project.dependencies[0].lag,
-            timedelta(days=2)
+            timedelta(weeks=2)
         )
+        self.assertEqual(
+            project.dependencies[0].lag_unit,
+            "w"
+        )
+        
 
     def test_compact_type_lag_defaults_positive(self):
         text = """
@@ -707,6 +719,8 @@ class TestParser(unittest.TestCase):
 
         self.assertEqual(dependency.dependency_type.value, "FS")
         self.assertEqual(dependency.lag, timedelta(days=2))
+        self.assertEqual(dependency.lag_unit, "d")
+        
 
     def test_compact_type_positive_lag(self):
         text = """

@@ -17,6 +17,7 @@ class PendingDependency:
     successor_id: str
     dependency_type: str
     lag: timedelta
+    lag_unit: str
     line_number: int
 
 class Parser:
@@ -154,7 +155,7 @@ class Parser:
             if match:
                 task_id = match.group("id")
                 description = match.group("description").strip()
-                duration = self.parse_duration(match.group("duration"))
+                duration, duration_unit = self.parse_duration(match.group("duration"))
 
                 if duration == None:
                     # TODO implement milestones
@@ -188,13 +189,13 @@ class Parser:
                 
                 if lag is None:
                     lag = "0d"
-                lag = self.parse_duration(lag)
+                lag, lag_unit = self.parse_duration(lag)
 
                 pending = PendingDependency(
                     predecessor_id=predecessor_id,
                     successor_id=successor_id,
                     dependency_type=dependency_type,
-                    lag=lag, line_number=line_number)
+                    lag=lag, lag_unit=lag_unit, line_number=line_number)
                 pending_dependencies.append(pending)
                 
 
@@ -212,7 +213,7 @@ class Parser:
 
     def parse_duration(self, value):
         if value is None:
-            return None
+            return None, None
 
         value = value.lower()
 
@@ -228,11 +229,11 @@ class Parser:
         unit = value[-1]
 
         if unit == "h":
-            return timedelta(hours=number)
+            return (timedelta(hours=number),"h")
         elif unit == "d":
-            return timedelta(days=number)
+            return (timedelta(days=number), "d")
         elif unit == "w":
-            return timedelta(weeks=number)
+            return (timedelta(weeks=number), "w")
         elif unit == "m":
             # Define what "month" means here before implementing this.
             
@@ -393,7 +394,7 @@ class Parser:
                     and existing.lag == d.lag
                 ):
                     raise ParseError(f"Line {d.line_number}: duplicate dependency '{d.predecessor_id}' > '{d.successor_id}'")
-            project.add_dependency(predecessor, successor, d.dependency_type, d.lag)
+            project.add_dependency(predecessor, successor, d.dependency_type, d.lag, d.lag_unit)
 
     def validate_project(self, project):
         if (

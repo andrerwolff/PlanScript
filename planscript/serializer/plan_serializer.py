@@ -31,24 +31,31 @@ class PlanSerializer():
         predecessor_id = dependency.predecessor.number
         successor_id = dependency.successor.number
         dependency_type = dependency.dependency_type.value
-        
+        dependency_and_lag = ""
+        sign = ""
+        # TODO this is very incomplete this is where i left off - giving 2.0 instead of 2 maybe use rstrip
         lag = dependency.lag.days
+        lag_unit = dependency.lag_unit
+        if lag_unit == "m":
+            lag = lag / 30
+        elif lag_unit == "w":
+            lag = lag / 7
+        elif lag_unit == "d":
+            lag = lag
+        elif lag_unit == "h":
+            lag = lag / 24
+
         if dependency_type != "FS":
             if lag != 0:
                 if lag > 0:
                     sign = "+"
                 elif lag < 0:
                     sign = "-"
-            else:
-                sign = ""
+            dependency_and_lag = f"{dependency_type} {sign}{lag:.2f}".rstrip("0").rstrip(".")
+            #else:
+                #sign = ""
         else:
-            dependency_type = ""
-                
+            dependency_and_lag = f"{dependency_type} {sign}{lag:.2f}".rstrip("0").rstrip(".")
 
-        
-        elif lag == 0:
-            sign = ""
-            lag = ""
-        lag = sign + str(lag)
-        line = str(f"{predecessor_id} > {successor_id} {dependency_type} {lag}")
+        line = str(f"dependency {predecessor_id} > {successor_id} {dependency_and_lag}{lag_unit}")
         return line
