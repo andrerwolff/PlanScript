@@ -226,7 +226,7 @@ class TestParser(unittest.TestCase):
         self.assertEqual(project.start_date, date(2026,1,5))
         self.assertEqual(project.finish_date, date(2026,12,31))
 
-        self.assertEqual(len(project.tasks), 7)
+        self.assertEqual(len(project.tasks), 8)
         self.assertEqual(len(project.dependencies), 5)
 
         self.assertEqual(project.tasks["1.1"].duration, timedelta(days=5))
@@ -317,8 +317,22 @@ class TestParser(unittest.TestCase):
         self.assertEqual(task.name, "Mobilization")
         self.assertEqual(task.duration, timedelta(days=5))
 
+    def test_task_0_duration_is_milestone(self):
+        text = """
+        project: Test
+        task 1.1 Notice to Proceed 0
+        """
+
+        project = self.parser.parse(text)
+
+        self.assertIn("1.1", project.tasks)
+    
+        task = project.tasks["1.1"]
+
+        self.assertEqual(task.duration, timedelta(0))
+        self.assertTrue(project.tasks["1.1"].is_milestone)
+
     def test_task_without_duration_is_summary(self):
-        # TODO - update this once summary items are stored somewhere
         text = """
         project: Test
         task 1.1 Notice to Proceed
@@ -326,12 +340,12 @@ class TestParser(unittest.TestCase):
 
         project = self.parser.parse(text)
 
-        #self.assertIn("1.1", project.tasks)
+        self.assertIn("1.1", project.tasks)
     
-        #task = project.tasks["1.1"]
+        task = project.tasks["1.1"]
 
-        #self.assertEqual(task.duration, timedelta(0))
-        self.assertEqual({},project.tasks)
+        self.assertEqual(task.duration, None)
+        self.assertTrue(project.tasks["1.1"].is_summary)
 
     def test_hierarchical_task_id(self):
         text = """

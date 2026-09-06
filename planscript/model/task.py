@@ -14,7 +14,16 @@ class Task:
     #calendar: str | None = None
 
     #constraints: list = field(default_factory=list)
+    parent_id: str | None = None
     metadata: dict = field(default_factory=dict)
+
+    @property
+    def is_milestone(self) -> bool: 
+        return self.duration == timedelta(0)
+
+    @property
+    def is_summary(self) -> bool:
+        return self.duration is None
 
     def __str__(self):
         return f"{self.number} - {self.name} {self.duration.days}d"    

@@ -26,6 +26,7 @@ class Scheduler:
     
     def calculate(self, project):
         ordered_task_ids = self._topological_sort(project)
+        task_tree = self._build_tree(project)
         early_start, early_finish = self._forward_pass(project, ordered_task_ids)
         late_start, late_finish, duration = self._backward_pass(project, ordered_task_ids, early_finish)
         total_float = self._float(ordered_task_ids, early_start, late_start)
@@ -35,6 +36,7 @@ class Scheduler:
 
         return Schedule(project = project,
             ordered_task_ids = ordered_task_ids,
+            task_tree = task_tree
             early_start = early_start,
             early_finish = early_finish,
             late_start = late_start,
@@ -45,7 +47,6 @@ class Scheduler:
             duration = duration,
             start_dates= start_dates,
             finish_dates= finish_dates)
-       
 
     def _topological_sort(self, project):
         ordered_task_ids = []
@@ -112,7 +113,8 @@ class Scheduler:
                 #early_start[task_id] = max(timedelta(0), max(candidate_es_values)) for clamp to 0
                 early_start[task_id] = max(candidate_es_values)
 
-            early_finish[task_id] = (early_start[task_id] + task.duration)
+            if not task.is_summary:
+                early_finish[task_id] = (early_start[task_id] + task.duration)
 
         return early_start, early_finish
 
@@ -147,8 +149,10 @@ class Scheduler:
                     raise ValueError("Looks like an issue with dependency type - Backward Pass")
                 
                 candidate_lf_values.append(candidate_lf)
-            late_finish[task_id] = min(candidate_lf_values)
-            late_start[task_id] = (late_finish[task_id] - task.duration)
+
+            if not task.is_summary:
+                late_finish[task_id] = min(candidate_lf_values)
+                late_start[task_id] = (late_finish[task_id] - task.duration)
 
         return late_start, late_finish, project_duration
 
@@ -223,3 +227,38 @@ class Scheduler:
             finish = start_date + early_finish[task_id]
             finish_dates[task_id] = finish
         return start_dates, finish_dates
+
+class TaskNode:
+    def __init__(self, task):
+        self.task = task
+        self.children = []
+
+class TaskTree:
+    # TODO here now, figuring out task tree development, see CGPT
+    def __init__(self,tasks):
+        self.nodes = {}
+        self.roots = []
+
+        self._build(tasks)   
+
+    def _parent_id(task_id: str) -> str | None:
+        if "." not in task_id:
+            return None
+
+        return task_id.rsplit(".", 1)[0]
+
+    def _build_task_tree(self, tasks):
+        # Create nodes
+        for task in tasks.values():
+            self.nodes[task.id] = TaskNode(task)
+
+        # Connect hierarchy
+        for task in tasks.values():
+            parent_id = self._parent_id(task.id)
+
+            node = self.nodes[task.id]
+
+            if parent_id and parent_id in self.nodes:
+                self.nodes[parent_id].children.append(node)
+            else:
+                self.roots.append(node)

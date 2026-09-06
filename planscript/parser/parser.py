@@ -26,7 +26,7 @@ class Parser:
         r"^task\s+"
         r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
         r"(?P<description>.+?)"
-        r"(?:\s+(?P<duration>\d+(?:\.\d+)?[hdwm]))?$",
+        r"(?:\s+(?P<duration>\d+(?:\.\d+)?[hdwm]?))?$",
         re.IGNORECASE
     )
 
@@ -157,16 +157,12 @@ class Parser:
                 description = match.group("description").strip()
                 duration, duration_unit = self.parse_duration(match.group("duration"))
 
-                if duration == None:
-                    # TODO implement milestones
-                    # print(f"{task_id} is summary")
-                    continue
-
-                if duration < timedelta(0):
-                    raise ParseError(f"Duration cannot be negative: '{value}'")
+                if duration is not None:
+                    if duration < timedelta(0):
+                        raise ParseError(f"Duration cannot be negative: '{value}'")
                 
-                if task_id in project.tasks:
-                    raise ParseError(f"Line {line_number}: duplicate task ID '{task_id}'")
+                    if task_id in project.tasks:
+                        raise ParseError(f"Line {line_number}: duplicate task ID '{task_id}'")
 
                 task = Task(task_id, description, duration)
 
@@ -212,6 +208,7 @@ class Parser:
         return project
 
     def parse_duration(self, value):
+        print(value)
         if value is None:
             return None, None
 
@@ -238,7 +235,7 @@ class Parser:
             # Define what "month" means here before implementing this.
             
            # print("Month durations are not yet supported")
-            return timedelta(days=number*30)
+            return (timedelta(days=number*30), "m")
 
         raise ParseError(f"Invalid duration: {value}")
 
