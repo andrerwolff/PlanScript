@@ -5,6 +5,11 @@ from planscript.model import dependency
 from planscript.model.calendar import Calendar
 from planscript.model.dependency import Dependency, DependencyType
 from planscript.model.task import Task
+from planscript.model.hierarchy import TaskHierarchy
+
+class ValidationError(Exception):
+    pass
+
 
 
 @dataclass
@@ -119,5 +124,30 @@ class Project:
 
     def validate(self):
         # TODO build this include hierarchy validation (parser, scheduler, project)
+        self._validate_dates()
+        self._validate_task_ids()
+        self._validate_dependencies()
+        self._validate_task_durations()
 
+    def _validate_dates(self):
+        if (
+            self.start_date is not None
+            and self.finish_date is not None                
+            and self.start_date > self.finish_date):
+            raise ValidationError("Project start date cannot be after finish date.")
+
+    def _validate_task_ids(self):
+        pass
+
+    def _validate_dependencies(self):
+        hierarchy = TaskHierarchy(self.tasks)
+
+        for task_id, task in self.tasks.items():
+            if hierarchy.has_children(task_id):
+                if task.duration is not None:
+                    raise ValidationError(f"Summary task '{task_id}' cannot have a duration.")
+            elif task.duration is None:
+                raise ValidationError(f"Task '{task_id}' must have a duration.")
+
+    def _validate_task_durations(self):
         pass

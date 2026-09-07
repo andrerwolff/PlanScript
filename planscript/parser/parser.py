@@ -2,7 +2,7 @@ import re
 from datetime import timedelta, date
 from dataclasses import dataclass
 
-from planscript.model.project import Project
+from planscript.model.project import Project, ValidationError
 from planscript.model.task import Task
 from planscript.model.dependency import Dependency
 
@@ -204,7 +204,11 @@ class Parser:
             raise ParseError("No project declaration found")
 
         self.resolve_dependencies(project, pending_dependencies)
-        self.validate_project(project)
+        try:
+            project.validate()
+        except ValidationError as e:
+            raise ParseError(str(e)) from e
+
         return project
 
     def parse_duration(self, value):
@@ -391,12 +395,3 @@ class Parser:
                 ):
                     raise ParseError(f"Line {d.line_number}: duplicate dependency '{d.predecessor_id}' > '{d.successor_id}'")
             project.add_dependency(predecessor, successor, d.dependency_type, d.lag, d.lag_unit)
-
-    def validate_project(self, project):
-        if (
-            project.start_date is not None
-            and project.finish_date is not None
-            and project.start_date > project.finish_date
-        ):
-            raise ParseError("Project start date cannot be after finish date.")
-        # TODO - add other validations?

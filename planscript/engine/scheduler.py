@@ -162,6 +162,7 @@ class Scheduler:
         total_float = {}
 
         for task_id in ordered_task_ids:
+            print(task_id)
             total_float[task_id] = late_start[task_id] - early_start[task_id]
         return total_float
 
