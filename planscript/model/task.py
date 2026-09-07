@@ -21,9 +21,5 @@ class Task:
     def is_milestone(self) -> bool: 
         return self.duration == timedelta(0)
 
-    @property
-    def is_summary(self) -> bool:
-        return self.duration is None
-
     def __str__(self):
         return f"{self.number} - {self.name} {self.duration.days}d"    

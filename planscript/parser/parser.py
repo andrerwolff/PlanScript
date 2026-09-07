@@ -208,7 +208,6 @@ class Parser:
         return project
 
     def parse_duration(self, value):
-        print(value)
         if value is None:
             return None, None
 

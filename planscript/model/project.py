@@ -116,3 +116,8 @@ class Project:
             if dependency.predecessor == task:
                 outgoing_dependencies.append(dependency)
         return outgoing_dependencies
+
+    def validate(self):
+        # TODO build this include hierarchy validation (parser, scheduler, project)
+
+        pass

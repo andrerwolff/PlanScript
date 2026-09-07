@@ -345,7 +345,6 @@ class TestParser(unittest.TestCase):
         task = project.tasks["1.1"]
 
         self.assertEqual(task.duration, None)
-        self.assertTrue(project.tasks["1.1"].is_summary)
 
     def test_hierarchical_task_id(self):
         text = """
@@ -413,7 +412,7 @@ class TestParser(unittest.TestCase):
     def test_duration_months(self):
         self.assertEqual(
             self.parser.parse_duration("2m"),
-            timedelta(days=60)
+            (timedelta(days=60), "m")
         )
 
     def test_duration_is_case_insensitive(self):
