@@ -84,7 +84,7 @@ class ValidatePlan(unittest.TestCase):
         project: Test
         task 1.1 Design 5d
         task 1.2 Construction 10d
-        dependency 1.1 > 1.2 FS -2d
+            depends 1.1 FS -2d
         """
 
         project = self.parser.parse(text)
@@ -117,9 +117,8 @@ class ValidatePlan(unittest.TestCase):
 
         task 1.1 A 5d
         task 1.2 B 5d
-
-        dependency 1.1 > 1.2
-        dependency 1.1 > 1.2
+            depends 1.1 SS 2d
+            depends 1.1 SS 2d
         """
 
         with self.assertRaises(ParseError) as context:
@@ -136,32 +135,12 @@ class ValidatePlan(unittest.TestCase):
 
         task 1.1 A 5d
         task 1.2 B 5d
-
-        dependency 1.1 > 1.2 SS2
-        dependency 1.1 > 1.2 SS2
-        """
-
-        with self.assertRaises(ParseError) as context:
-            self.parser.parse(text)
-
-        self.assertIn(
-            "duplicate dependency",
-            str(context.exception)
-        )
-
-    def test_duplicate_dependency_3(self):
-        text = """
-        project: Test
-
-        task 1.1 A 5d
-        task 1.2 B 5d
-
-        dependency 1.1 > 1.2 SS4
-        dependency 1.1 > 1.2 SS2
-        dependency 1.1 > 1.2 FS4
-        dependency 1.1 > 1.2 SS -4d
-        dependency 1.1 > 1.2 SS 4w
-        dependency 1.1 > 1.2 FS 4h
+            depends 1.1 SS 4d
+            depends 1.1 SS 2d
+            depends 1.1 FS 4d
+            depends 1.1 SS -4d
+            depends 1.1 SS 4w
+            depends 1.1 FS 4h
         """
 
         project = self.parser.parse(text)
@@ -172,8 +151,7 @@ class ValidatePlan(unittest.TestCase):
         text = """
         project: Test
         task 1.1 A 5d
-
-        dependency 1.1 > 1.1
+            depends 1.1
         """
 
         with self.assertRaises(ParseError):
@@ -205,18 +183,17 @@ class TestParser(unittest.TestCase):
 
         task 1.1 Survey 5d
         task 1.2 Preliminary Design 10d
+            depends 1.1 3d
         task 1.3 Final Design 5d
+            depends 1.2 FS 2w
 
         task 2 Construction 
         task 2.1 Mobilization 0d
+            depends 1.3 FS-1d
         task 2.2 Construction 25d
+            depends 2.1 SS +2d
         task 2.3 Substantial Completion 0d
-
-        dependency 1.1 > 1.2 3
-        dependency 1.2 > 1.3 FS 2w
-        dependency 1.3 > 2.1 FS-1
-        dependency 2.1 > 2.2 SS+2d
-        dependency 2.2 > 2.3 0
+            depends 2.2 0
         """
 
         project = self.parser.parse(text)
@@ -238,13 +215,13 @@ class TestParser(unittest.TestCase):
         d4 = project.get_incoming_dependencies(project.tasks["2.2"])[0]
         d5 = project.get_incoming_dependencies(project.tasks["2.3"])[0]
         self.assertEqual(d1.lag, timedelta(days = 3))
-        self.assertEqual(d1.dependency_type.value, "FS")
+        self.assertEqual(d1.dep_type.value, "FS")
         self.assertEqual(d2.lag, timedelta(weeks = 2))
         self.assertEqual(d3.lag, timedelta(days = -1))
         self.assertEqual(d4.lag, timedelta(days = 2))
-        self.assertEqual(d4.dependency_type.value, "SS")
+        self.assertEqual(d4.dep_type.value, "SS")
         self.assertEqual(d5.lag, timedelta(0))
-        self.assertEqual(d5.dependency_type.value, "FS")
+        self.assertEqual(d5.dep_type.value, "FS")
 
     def test_forward_dependency_reference(self):
         text = """
@@ -555,7 +532,7 @@ class TestParser(unittest.TestCase):
 
         self.assertEqual(dependency.predecessor.number, "1.1")
         self.assertEqual(dependency.successor.number, "1.2")
-        self.assertEqual(dependency.dependency_type.value, "FS")
+        self.assertEqual(dependency.dep_type.value, "FS")
         self.assertEqual(dependency.lag, timedelta(0))
         self.assertEqual(dependency.lag_unit, "d")
 
@@ -573,7 +550,7 @@ class TestParser(unittest.TestCase):
 
         dependency = project.dependencies[0]
 
-        self.assertEqual(dependency.dependency_type.value, "FS")
+        self.assertEqual(dependency.dep_type.value, "FS")
         self.assertEqual(dependency.lag_unit, "d")
 
     def test_lag_without_type_defaults_to_fs(self):
@@ -588,7 +565,7 @@ class TestParser(unittest.TestCase):
 
         dependency = project.dependencies[0]
 
-        self.assertEqual(dependency.dependency_type.value, "FS")
+        self.assertEqual(dependency.dep_type.value, "FS")
         self.assertEqual(dependency.lag, timedelta(days=2))
         self.assertEqual(dependency.lag_unit, "d")
 
@@ -604,7 +581,7 @@ class TestParser(unittest.TestCase):
 
         dependency = project.dependencies[0]
 
-        self.assertEqual(dependency.dependency_type.value, "FS")
+        self.assertEqual(dependency.dep_type.value, "FS")
         self.assertEqual(dependency.lag, timedelta(days=-2))
         self.assertEqual(dependency.lag_unit, "d")
 
@@ -623,7 +600,7 @@ class TestParser(unittest.TestCase):
         project = self.parser.parse(text)
 
         self.assertEqual(
-            project.dependencies[0].dependency_type.value,
+            project.dependencies[0].dep_type.value,
             "SS"
         )
         self.assertEqual(project.dependencies[0].lag_unit, "d")
@@ -639,7 +616,7 @@ class TestParser(unittest.TestCase):
         project = self.parser.parse(text)
 
         self.assertEqual(
-            project.dependencies[0].dependency_type.value,
+            project.dependencies[0].dep_type.value,
             "FF"
         )
 
@@ -654,7 +631,7 @@ class TestParser(unittest.TestCase):
         project = self.parser.parse(text)
 
         self.assertEqual(
-            project.dependencies[0].dependency_type.value,
+            project.dependencies[0].dep_type.value,
             "SF"
         )
 
@@ -730,7 +707,7 @@ class TestParser(unittest.TestCase):
 
         dependency = project.dependencies[0]
 
-        self.assertEqual(dependency.dependency_type.value, "FS")
+        self.assertEqual(dependency.dep_type.value, "FS")
         self.assertEqual(dependency.lag, timedelta(days=2))
         self.assertEqual(dependency.lag_unit, "d")
         
@@ -774,37 +751,21 @@ class TestParser(unittest.TestCase):
         text = """
         project: Test
         task 1.2 Construction 10d
-
-        dependency 1.1 > 1.2
+            depends 1.1
         """
 
         with self.assertRaises(ParseError) as context:
             self.parser.parse(text)
 
-        self.assertIn("Line 5", str(context.exception))
+        self.assertIn("Line 4", str(context.exception))
         self.assertIn("unknown predecessor task '1.1'", str(context.exception))
-
-
-    def test_unknown_successor(self):
-        text = """
-        project: Test
-        task 1.1 Design 5d
-
-        dependency 1.1 > 1.2
-        """
-
-        with self.assertRaises(ParseError) as context:
-            self.parser.parse(text)
-
-        self.assertIn("unknown successor task '1.2'", str(context.exception))
 
     def test_invalid_dependency_relationship(self):
         text = """
         project: Test
         task 1.1 Design 5d
         task 1.2 Construction 10d
-
-        dependency 1.1 > nonsense
+            depends nonsense -2w
         """
 
         with self.assertRaises(ParseError):
@@ -815,7 +776,7 @@ class TestParser(unittest.TestCase):
         project: Test
         task 1.1 A 5d
         task 1.2 B 5d
-        dependency 1.1 > 1.2FS
+            depends 1.1FS
         """
 
         with self.assertRaises(ParseError) as context:

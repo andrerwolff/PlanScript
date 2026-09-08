@@ -32,8 +32,8 @@ class Scheduler:
         ordered_task_ids = self._topological_sort(project)
         early_start, early_finish = self._forward_pass(project, ordered_task_ids)
         late_start, late_finish, duration = self._backward_pass(project, ordered_task_ids, early_finish)
-        total_float = self._float(ordered_task_ids, early_start, late_start)
-        critical_tasks = self._critical_tasks(ordered_task_ids, total_float)
+        total_float = self._float(early_start, late_start)
+        critical_tasks = self._critical_tasks(total_float)
         critical_paths = self._find_critical_paths(project, critical_tasks)
         start_dates, finish_dates = self._get_dates(project, early_start, early_finish)
 
@@ -81,9 +81,11 @@ class Scheduler:
     def _forward_pass(self, project, ordered_task_ids):
         early_start = {}
         early_finish = {}
-
         for task_id in ordered_task_ids:
             task = project.tasks[task_id]
+            #pass on summary tasks
+            if task.duration is None:
+                continue
             dependencies = project.get_incoming_dependencies(task)
 
             if not dependencies:
@@ -94,17 +96,17 @@ class Scheduler:
                 for dependency in dependencies:
                     predecessor = dependency.predecessor
                     predecessor_id = predecessor.number
-                    if dependency.dependency_type == DependencyType.FINISH_START:
+                    if dependency.dep_type == DependencyType.FINISH_START:
                         candidate_es = (early_finish[predecessor_id] + dependency.lag)
                         
-                    elif dependency.dependency_type == DependencyType.START_START:
+                    elif dependency.dep_type == DependencyType.START_START:
                         candidate_es = (early_start[predecessor_id] + dependency.lag)
 
-                    elif dependency.dependency_type == DependencyType.FINISH_FINISH:
+                    elif dependency.dep_type == DependencyType.FINISH_FINISH:
                         candidate_ef = (early_finish[predecessor_id] + dependency.lag)
                         candidate_es = (candidate_ef - task.duration)
 
-                    elif dependency.dependency_type == DependencyType.START_FINISH:
+                    elif dependency.dep_type == DependencyType.START_FINISH:
                         candidate_ef = (early_start[predecessor_id] + dependency.lag)
                         candidate_es = (candidate_ef - task.duration)
 
@@ -126,6 +128,9 @@ class Scheduler:
         late_finish = {}
         for task_id in reversed(ordered_task_ids):
             task = project.tasks[task_id]
+            # Pass on tasks that are summary
+            if task.duration is None:
+                continue
             #----------------------------
             dependencies = project.get_outgoing_dependencies(task)
             candidate_lf_values = [project_duration]
@@ -133,17 +138,17 @@ class Scheduler:
                 successor = dependency.successor
                 successor_id = successor.number
 
-                if dependency.dependency_type == DependencyType.FINISH_START:
+                if dependency.dep_type == DependencyType.FINISH_START:
                     candidate_lf = (late_start[successor.number] - dependency.lag)
 
-                elif dependency.dependency_type == DependencyType.START_START:
+                elif dependency.dep_type == DependencyType.START_START:
                     candidate_ls = (late_start[successor.number] - dependency.lag)
                     candidate_lf = (candidate_ls + task.duration)
 
-                elif dependency.dependency_type == DependencyType.FINISH_FINISH:
+                elif dependency.dep_type == DependencyType.FINISH_FINISH:
                     candidate_lf = (late_finish[successor_id] - dependency.lag)
 
-                elif dependency.dependency_type == DependencyType.START_FINISH:
+                elif dependency.dep_type == DependencyType.START_FINISH:
                     candidate_ls = (late_finish[successor_id] - dependency.lag)
                     candidate_lf = (candidate_ls + task.duration)
 
@@ -158,17 +163,16 @@ class Scheduler:
 
         return late_start, late_finish, project_duration
 
-    def _float(self, ordered_task_ids, early_start, late_start):
+    def _float(self, early_start, late_start):
         total_float = {}
 
-        for task_id in ordered_task_ids:
-            print(task_id)
+        for task_id in early_start:
             total_float[task_id] = late_start[task_id] - early_start[task_id]
         return total_float
 
-    def _critical_tasks(self, ordered_task_ids, total_float):
+    def _critical_tasks(self, total_float):
         critical_tasks = []
-        for task_id in ordered_task_ids:
+        for task_id in total_float:
             if total_float[task_id] == timedelta(0):
                 critical_tasks.append(task_id)
         return critical_tasks

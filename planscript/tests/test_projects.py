@@ -363,8 +363,8 @@ def competing_constraints():
     for task in [a, b, c]:
         project.add_task(task)
 
-    project.add_dependency(predecessor=a, successor=c, dependency_type="FS")
-    project.add_dependency(predecessor=b, successor=c, dependency_type="SS")
+    project.add_dependency(predecessor=a, successor=c, dep_type="FS")
+    project.add_dependency(predecessor=b, successor=c, dep_type="SS")
 
     return project
 
@@ -378,7 +378,7 @@ def negative_lag():
     project.add_task(a)
     project.add_task(b)
 
-    project.add_dependency(predecessor=a, successor=b, dependency_type="FS", lag=timedelta(days=-2))
+    project.add_dependency(predecessor=a, successor=b, dep_type="FS", lag=timedelta(days=-2))
 
     return project
     
@@ -409,8 +409,8 @@ def finish_start():
     project.add_task(b)
     project.add_task(c)
 
-    project.add_dependency(predecessor=a, successor=b, dependency_type="FS")
-    project.add_dependency(predecessor=b, successor=c, dependency_type="FS")
+    project.add_dependency(predecessor=a, successor=b, dep_type="FS")
+    project.add_dependency(predecessor=b, successor=c, dep_type="FS")
 
     return project
 
@@ -424,7 +424,7 @@ def start_start():
     project.add_task(a)
     project.add_task(b)
 
-    project.add_dependency(predecessor=a, successor=b, dependency_type="SS")
+    project.add_dependency(predecessor=a, successor=b, dep_type="SS")
 
     return project
 
@@ -438,7 +438,7 @@ def finish_finish():
     project.add_task(a)
     project.add_task(b)
 
-    project.add_dependency(predecessor=a, successor=b, dependency_type=DependencyType.FINISH_FINISH)
+    project.add_dependency(predecessor=a, successor=b, dep_type=DependencyType.FINISH_FINISH)
 
     return project
 
@@ -452,6 +452,6 @@ def start_finish():
     project.add_task(a)
     project.add_task(b)
 
-    project.add_dependency(predecessor=a, successor=b, dependency_type=DependencyType.START_FINISH)
+    project.add_dependency(predecessor=a, successor=b, dep_type=DependencyType.START_FINISH)
 
     return project

@@ -15,7 +15,7 @@ class ParseError(Exception):
 class PendingDependency:
     predecessor_id: str
     successor_id: str
-    dependency_type: str
+    dep_type: str
     lag: timedelta
     lag_unit: str
     line_number: int
@@ -25,27 +25,29 @@ class Parser:
     TASK_PATTERN = re.compile(
         r"^task\s+"
         r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
-        r"(?P<description>.+?)"
-        r"(?:\s+(?P<duration>\d+(?:\.\d+)?[hdwm]?))?$",
-        re.IGNORECASE
+        r"(?P<name>.+?)"
+        r"(?:\s+(?P<duration>\d+(?:\.\d+)?[hdw]))?$"
     )
 
     INVALID_TASK_DURATION_PATTERN = re.compile(
         r"^task\s+"
         r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
         r"(?P<description>.+?)\s+"
-        r"(?P<duration>[+-]\d+(?:\.\d+)?[hdwm]?)$",
-        re.IGNORECASE
+        r"(?P<duration>[+-]\d+(?:\.\d+)?[hdwm]?)$"
     )
 
     DEPENDENCY_PATTERN = re.compile(
-        r"^dependency\s+"
-        r"(?P<predecessor>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
-        r">\s+"
-        r"(?P<relationship>.+)$",
-        re.IGNORECASE
+        r"^depends\s+"
+        r"(?P<predecessor>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)"
+        r"(?:\s+(?P<type>FS|SS|FF|SF))?"
+        r"(?:\s+(?P<lag>[+-]?\d+(?:\.\d+)?[hdw]))?$"
     )
 
+    ATTACHED_DEPENDENCY_TYPE_PATTERN = re.compile(
+        r"^depends\s+"
+        r"(?P<predecessor>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)(?P<type>FS|SS|FF|SF)"
+)
+        
     PROJECT_PATTERN = re.compile(
         r"^project:\s*(?P<name>.+)$",
         re.IGNORECASE
@@ -71,6 +73,7 @@ class Parser:
 
         project = None
         current_entry = None
+        current_task = None
         seen_project_attributes = set()
         pending_dependencies = []
 
@@ -83,7 +86,7 @@ class Parser:
                 continue
 
             # Comment
-            if line.startswith("#"):
+            if line.startswith(";"):
                 continue
 
             # Project
@@ -154,7 +157,8 @@ class Parser:
             match = self.TASK_PATTERN.match(line)
             if match:
                 task_id = match.group("id")
-                description = match.group("description").strip()
+                current_task = task_id
+                name = match.group("name").strip()
                 duration, duration_unit = self.parse_duration(match.group("duration"))
 
                 if duration is not None:
@@ -164,7 +168,7 @@ class Parser:
                     if task_id in project.tasks:
                         raise ParseError(f"Line {line_number}: duplicate task ID '{task_id}'")
 
-                task = Task(task_id, description, duration)
+                task = Task(task_id, name, duration)
 
                 project.add_task(task)
 
@@ -172,16 +176,24 @@ class Parser:
                 continue
 
             # Dependency
-            # TODO parse dependency into temporary and only after loading all tasks, create dependency object
+            match = self.ATTACHED_DEPENDENCY_TYPE_PATTERN.match(line)
+            if match:
+                raise ParseError(
+                    f"Line {line_number}: dependency type must be separated "
+                    f"from successor task ID by whitespace"
+                )
+            
             match = self.DEPENDENCY_PATTERN.match(line)
             if match:
                 predecessor_id = match.group("predecessor")
-                relationship = match.group("relationship")
+                successor_id = current_task
+                dep_type = match.group("type")
+                lag = match.group("lag")
 
-                successor_id, dependency_type, lag = self.parse_dependency(relationship, project, line_number)
+                # depreciated delete successor_id, dep_type, lag = self.parse_dependency(relationship, project, line_number)
 
-                if dependency_type is None:
-                    dependency_type = "FS"
+                if dep_type is None:
+                    dep_type = "FS"
                 
                 if lag is None:
                     lag = "0d"
@@ -190,14 +202,14 @@ class Parser:
                 pending = PendingDependency(
                     predecessor_id=predecessor_id,
                     successor_id=successor_id,
-                    dependency_type=dependency_type,
+                    dep_type=dep_type,
                     lag=lag, lag_unit=lag_unit, line_number=line_number)
                 pending_dependencies.append(pending)
                 
 
                 current_entry = project
                 continue
-
+            
             raise ParseError(f"Line {line_number}: unrecognized syntax: {line}")
 
         if project is None:
@@ -390,8 +402,8 @@ class Parser:
                 if (
                     existing.predecessor is predecessor
                     and existing.successor is successor
-                    and existing.dependency_type.value == d.dependency_type
+                    and existing.dep_type.value == d.dep_type
                     and existing.lag == d.lag
                 ):
                     raise ParseError(f"Line {d.line_number}: duplicate dependency '{d.predecessor_id}' > '{d.successor_id}'")
-            project.add_dependency(predecessor, successor, d.dependency_type, d.lag, d.lag_unit)
+            project.add_dependency(predecessor, successor, d.dep_type, d.lag, d.lag_unit)
