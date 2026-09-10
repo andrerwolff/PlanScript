@@ -83,7 +83,7 @@ class Parser:
 
         for line_number, raw_line in enumerate(text.splitlines(), start=1):
 
-            #print(repr(raw_line))
+            print(repr(raw_line))
             line = raw_line.rstrip()
 
             # Blank line

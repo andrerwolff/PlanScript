@@ -23,8 +23,8 @@ class ValidatePlan(unittest.TestCase):
     def test_duplicate_start(self):
         text = """
         project: Test
-        start: 2026-01-01
-        start: 2026-02-01
+            start: 2026-01-01
+            start: 2026-02-01
         """
 
         with self.assertRaises(ParseError) as context:
@@ -35,8 +35,8 @@ class ValidatePlan(unittest.TestCase):
     def test_duplicate_finish(self):
             text = """
             project: Test
-            finish: 2026-01-01
-            finish: 2026-02-01
+                finish: 2026-01-01
+                finish: 2026-02-01
             """
     
             with self.assertRaises(ParseError) as context:
@@ -47,8 +47,8 @@ class ValidatePlan(unittest.TestCase):
     def test_duplicate_calendar(self):
             text = """
             project: Test
-            calendar: standard
-            calendar: custom
+                calendar: standard
+                calendar: custom
             """
     
             with self.assertRaises(ParseError) as context:
@@ -59,8 +59,8 @@ class ValidatePlan(unittest.TestCase):
     def test_start_after_finish(self):
         text = """
         project: Test
-        start: 2026-12-31
-        finish: 2026-01-01
+            start: 2026-12-31
+            finish: 2026-01-01
         """
 
         with self.assertRaises(ParseError) as context:
@@ -171,15 +171,15 @@ class TestParser(unittest.TestCase):
 
         project: Water Treatment Plant
 
-        - client: City of Denver
-        - project_manager: Andre
+            - client: City of Denver
+            - project_manager: Andre
 
-        calendar: Standard
-        start: 2026-01-05
-        finish: 2026-12-31
+            calendar: Standard
+            start: 2026-01-05
+            finish: 2026-12-31
 
         task 1 Design
-        - discipline: Engineering
+            - discipline: Engineering
 
         task 1.1 Survey 5d
         task 1.2 Preliminary Design 10d
@@ -406,7 +406,7 @@ class TestParser(unittest.TestCase):
     def test_calendar(self):
         text = """
         project: Test
-        calendar: Standard
+            calendar: Standard
         """
 
         project = self.parser.parse(text)
@@ -416,7 +416,7 @@ class TestParser(unittest.TestCase):
     def test_start(self):
         text = """
         project: Test
-        start: 2026-01-01
+            start: 2026-01-01
         """
 
         project = self.parser.parse(text)
@@ -426,7 +426,7 @@ class TestParser(unittest.TestCase):
     def test_finish(self):
         text = """
         project: Test
-        finish: 2026-12-31
+            finish: 2026-12-31
         """
 
         project = self.parser.parse(text)
@@ -440,8 +440,8 @@ class TestParser(unittest.TestCase):
     def test_project_metadata(self):
         text = """
         project: Test
-        - client: City of Denver
-        - phase: Design
+            - client: City of Denver
+            - phase: Design
         """
 
         project = self.parser.parse(text)
@@ -454,8 +454,8 @@ class TestParser(unittest.TestCase):
         project: Test
 
         task 1.1 Design 5d
-        - discipline: Civil
-        - responsible: Andre
+            - discipline: Civil
+            - responsible: Andre
         """
 
         project = self.parser.parse(text)
@@ -470,10 +470,10 @@ class TestParser(unittest.TestCase):
         project: Test
 
         task 1.1 Design 5d
-        - discipline: Civil
+            - discipline: Civil
 
         task 1.2 Construction 10d
-        - discipline: Construction
+            - discipline: Construction
         """
 
         project = self.parser.parse(text)
@@ -755,7 +755,7 @@ class TestParser(unittest.TestCase):
     def test_metadata_without_entry(self):
         text = """
         project: Test
-        - client: Denver
+            - client: Denver
         """
 
         # Depending on intended syntax, this currently attaches
