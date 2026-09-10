@@ -74,3 +74,20 @@ class TaskHierarchy:
             )
 
         return descendants
+
+    def get_tree(self):
+        tree = {}
+        for root_id in self.get_roots():
+            self._add_to_tree(root_id, tree, 0)
+        return tree
+
+    def _add_to_tree(self, task_id, tree, level):
+        tree[task_id] = (" "*level+task_id)
+        level += 1
+        children = self.get_children(task_id)
+        children.sort()
+
+        for child_id in children:
+            self._add_to_tree(child_id, tree, level)
+
+        

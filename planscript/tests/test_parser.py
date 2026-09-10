@@ -738,7 +738,7 @@ class TestParser(unittest.TestCase):
             "dependency type must be separated",
             str(context.exception)
         )
-Tu567U23?apple
+
     # ---------------------------------------------------------
     # General syntax errors
     # ---------------------------------------------------------

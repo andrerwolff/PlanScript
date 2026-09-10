@@ -25,6 +25,22 @@ class Schedule:
         self.start_dates = start_dates
         self.finish_dates = finish_dates
 
+        self._rollup_summary_dates()
+
+    def _rollup_summary_dates(self):
+        for task_id in reversed(self.ordered_task_ids):
+            if self.hierarchy.is_summary(task_id):
+                decendant_starts = []
+                decendant_finishes = []
+                for child in self.hierarchy.get_descendants(task_id):
+                    decendant_starts.append(self.start_dates[child])
+                    decendant_finishes.append(self.finish_dates[child])
+
+                self.start_dates[task_id] = min(decendant_starts)
+                self.finish_dates[task_id] = max(decendant_finishes)
+                self.total_float[task_id] = "-"
+
+
 class Scheduler:
     
     def calculate(self, project):
@@ -81,6 +97,7 @@ class Scheduler:
     def _forward_pass(self, project, ordered_task_ids):
         early_start = {}
         early_finish = {}
+        fp_rollup = {}
         for task_id in ordered_task_ids:
             task = project.tasks[task_id]
             #pass on summary tasks

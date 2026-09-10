@@ -1,14 +1,14 @@
 ; Lift Station No.6 Schedule
 
 project: DOTI LS6
-- client: DOTI
-- project_number: TBA
-- description: Decommission LS6 and Install 18" Sewer
+    - client: DOTI
+    - project_number: TBA
+    - description: Decommission LS6 and Install 18" Sewer
 
-calendar: standard
+    calendar: standard
 
-start: 2026-09-28
-finish: 2029-12-31
+    start: 2026-09-28
+    finish: 2029-12-31
 
 task 1 Project Management
     - Owner: Design Team

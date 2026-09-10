@@ -170,13 +170,14 @@ def show_schedule_menu(project, schedule):
     print("  [D] View Schedule Dates")
     print("  [G] View Gantt Chart")
     print("  [B] Back to Main Menu")
-    print("  [Q] Quit")
     print()
     
     return input("  Select an option: ").strip().lower()
     
 
 def view_schedule_calculated(project, schedule):
+    tree = schedule.hierarchy.get_tree()
+    c1 = len(max(tree.values(), key=len))
     print()
     print(f"    PROJECT: {project.name}")
     print(f"    Duration: {schedule.duration}")
@@ -184,11 +185,16 @@ def view_schedule_calculated(project, schedule):
     print(f"    Target Finish: {schedule.project.finish_date}")
     print("~" * 69)
     print()
-    print(f"|{'ID':<5}|{'TASK':<25}|{'DUR':^5}|{'ES':^5}|{'EF':^5}|{'LS':^5}|{'LF':^5}|{'FLOAT':^5}|")
+    print(f"|{'ID':<{c1}}|{'TASK':<25}|{'DUR':^5}|{'ES':^5}|{'EF':^5}|{'LS':^5}|{'LF':^5}|{'FLOAT':^5}|")
     print("-" *69)
 
-    for task_id in schedule.ordered_task_ids:
+    for task_id in tree:
         task = schedule.project.tasks[task_id]
+
+        if schedule.hierarchy.is_summary(task_id):
+            d,es,ef,ls,lf,f = ("-","-","-","-","-","-")
+            print(f" {task_id:<{c1}} {task.name:<25} {d:^5} {es:^5} {ef:^5} {ls:^5} {lf:^5} {f:^5} ")
+            continue
 
         d = task.duration.days
         es = schedule.early_start[task_id].days
@@ -197,7 +203,7 @@ def view_schedule_calculated(project, schedule):
         lf = schedule.late_finish[task_id].days
         f = schedule.total_float[task_id].days
 
-        print(f" {task_id:<5} {task.name:<25} {d:^5} {es:^5} {ef:^5} {ls:^5} {lf:^5} {f:^5} ")
+        print(f" {task_id:<{c1}} {task.name:<25} {d:^5} {es:^5} {ef:^5} {ls:^5} {lf:^5} {f:^5} ")
     print(f"-"* 69)
     print()
     print("Critical Path(s):")
@@ -206,6 +212,9 @@ def view_schedule_calculated(project, schedule):
     input("Press Enter to continue...")
 
 def view_schedule_scheduled(project, schedule):
+    tree = schedule.hierarchy.get_tree()
+    c1 = len(max(tree.values(), key=len))
+    print(c1)
     print()
     print(f"    PROJECT: {project.name}")
     print(f"    Duration: {schedule.duration}")
@@ -213,16 +222,20 @@ def view_schedule_scheduled(project, schedule):
     print(f"    Target Finish: {schedule.project.finish_date}")
     print("~" * 69)
     print()
-    print(f"|{'ID':<5}|{'TASK':<25}|{'START':^10}|{'END':^10}|{'FLOAT':^7}|")
+    print(f"|{'ID':<{c1+1}}|{'TASK':<25}|{'START':^10}|{'END':^10}|{'FLOAT':^7}|")
     print("-" *69)
 
-    for task_id in schedule.ordered_task_ids:
+    
+    for task_id in tree:
         task = schedule.project.tasks[task_id]
         start = schedule.start_dates[task_id]
         end = schedule.finish_dates[task_id]
-        f = schedule.total_float[task_id].days
+        if schedule.total_float[task_id] == "-":
+            f = "-"
+        else:
+            f = schedule.total_float[task_id].days
 
-        print(f" {task_id:<5} {task.name:<25} {start.strftime('%#m/%#d/%y'):^10} {end.strftime('%#m/%#d/%y'):^10} {f:^7} ")
+        print(f" {tree[task_id]:<{c1+1}} {task.name:<25} {start.strftime('%#m/%#d/%y'):^10} {end.strftime('%#m/%#d/%y'):^10} {f:^7} ")
     print(f"-"* 69)
     print()
     print("Critical Path(s):")

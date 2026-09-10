@@ -126,6 +126,7 @@ class Project:
         # TODO build this include hierarchy validation (parser, scheduler, project)
         self._validate_dates()
         self._validate_task_ids()
+        self._validate_summaries()
         self._validate_dependencies()
         self._validate_task_durations()
 
@@ -139,7 +140,7 @@ class Project:
     def _validate_task_ids(self):
         pass
 
-    def _validate_dependencies(self):
+    def _validate_summaries(self):
         hierarchy = TaskHierarchy(self.tasks)
 
         for task_id, task in self.tasks.items():
@@ -148,6 +149,14 @@ class Project:
                     raise ValidationError(f"Summary task '{task_id}' cannot have a duration.")
             elif task.duration is None:
                 raise ValidationError(f"Task '{task_id}' must have a duration.")
+
+    def _validate_dependencies(self):
+        hierarchy = TaskHierarchy(self.tasks)
+
+        for dependency in self.dependencies:
+            predecessor_id = dependency.predecessor.number
+            if hierarchy.is_summary(predecessor_id):
+                raise ValidationError(f"Task '{predecessor_id}' is a 'Summary Task' and cannot be a predecessor.")
 
     def _validate_task_durations(self):
         pass

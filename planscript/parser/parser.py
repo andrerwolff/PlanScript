@@ -22,6 +22,10 @@ class PendingDependency:
 
 class Parser:
 
+    INDENTED_DIRECTIVE_PATTERN = re.compile(
+        r"^[ \t]+(?P<directive>[-A-Za-z]+)"
+    )
+
     TASK_PATTERN = re.compile(
         r"^task\s+"
         r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
@@ -37,14 +41,14 @@ class Parser:
     )
 
     DEPENDENCY_PATTERN = re.compile(
-        r"^depends\s+"
+        r"^(?: {4}|\t)depends\s+"
         r"(?P<predecessor>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)"
         r"(?:\s+(?P<type>FS|SS|FF|SF))?"
         r"(?:\s+(?P<lag>[+-]?\d+(?:\.\d+)?[hdw]))?$"
     )
 
     ATTACHED_DEPENDENCY_TYPE_PATTERN = re.compile(
-        r"^depends\s+"
+        r"^(?: {4}|\t)depends\s+"
         r"(?P<predecessor>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)(?P<type>FS|SS|FF|SF)"
 )
         
@@ -54,19 +58,19 @@ class Parser:
     )
 
     CALENDAR_PATTERN = re.compile(
-        r"^calendar:\s*(?P<calendar>.+)$"
+        r"^(?: {4}|\t)calendar:\s*(?P<calendar>.+)$"
     )
 
     START_PATTERN = re.compile(
-        r"^start:\s*(?P<date>\d{4}-\d{2}-\d{2})$"
+        r"^(?: {4}|\t)start:\s*(?P<date>\d{4}-\d{2}-\d{2})$"
     )
 
     FINISH_PATTERN = re.compile(
-        r"^finish:\s*(?P<date>\d{4}-\d{2}-\d{2})$"
+        r"^(?: {4}|\t)finish:\s*(?P<date>\d{4}-\d{2}-\d{2})$"
     )
 
     METADATA_PATTERN = re.compile(
-        r"^-\s+(?P<key>[^:]+):\s*(?P<value>.*)$"
+        r"^(?: {4}|\t)-\s+(?P<key>[^:]+):\s+(?P<value>.*)$"
     )
 
     def parse(self, text):
@@ -79,7 +83,8 @@ class Parser:
 
         for line_number, raw_line in enumerate(text.splitlines(), start=1):
 
-            line = raw_line.strip()
+            #print(repr(raw_line))
+            line = raw_line.rstrip()
 
             # Blank line
             if not line:
@@ -88,6 +93,9 @@ class Parser:
             # Comment
             if line.startswith(";"):
                 continue
+
+            if line.startswith(("calendar:","start:","finish:","depends","- ")):
+                raise ParseError(f"Line {line_number}: line must be indented")
 
             # Project
             match = self.PROJECT_PATTERN.match(line)
@@ -216,10 +224,7 @@ class Parser:
             raise ParseError("No project declaration found")
 
         self.resolve_dependencies(project, pending_dependencies)
-        try:
-            project.validate()
-        except ValidationError as e:
-            raise ParseError(str(e)) from e
+        project.validate()
 
         return project
 

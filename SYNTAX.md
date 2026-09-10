@@ -10,26 +10,27 @@ General concept:
 Example:
 ```text
 project: DOTI LS6
-- Client: DOTI
-- Project Number: TBA
-- Description: Decommission LS6 and Install 18" Sewer
+    - Client: DOTI
+    - Project Number: TBA
+    - Description: Decommission LS6 and Install 18" Sewer
 ```
 
 ### Project Metadata
-`- <key>: <value>`
+`<tab>- <key>: <value>`
 - User defined and generated, these are not required for CPM scheduling
 - Referred programattically like `project.metadata["Client"]`
+- tab or 4 spaces required before `-`
 - space required after `-` and after `:`
 
 ## Task Definition
 General concept:
- `task <ID> <description> <duration> ` 
+ `task <ID> <description> [duration] ` 
 
 Examples:
 ```text
 task 4.1.1 Alt Analysis 16w
 task 4.1.2 Engineering Report 6w
- - Description: Prepare report with intent to submit to CDPHE
+    - Description: Prepare report with intent to submit to CDPHE
 task 4.1.3 Submit Report 0d
 ```
 ### Task IDs
@@ -59,42 +60,39 @@ Task names are user-defined strings, very flexible.
 ### Task Duration
 The optional last entry on the task line, defines the length of the task. 
 
-Supported units:
- `h = hours d = days w = weeks m = months `
+Supported units (required if duration is listed):
+ `h = hours d = days w = weeks`
 
 Examples:
 
-✔ `8h, 5d, 2w, 3m , 2.5d, 1.5w, ``, 7 `
+✔ `8h, 5d, 2w, 2.5d, 1.5w`
 
 ✘ `5 d,  d4,  3days`
 
 Default Behavior:
 - If no duration is specified, the task will be marked as summary (no CPM impact)
-- If no unit is specified, the default is [d]ay
 - 0d tasks are considered milestones
 
 ### Task Metadata
-`- <key>: <value>`
+`<tab>- <key>: <value>`
 - User defined and generated, these are not required for CPM scheduling
 - Referred programattically like `task.metadata["Description"]`
+- tab or 4 spaces required before `-`
 - space required after `-` and after `:`
 
 ## Dependencies
 General concept:
-`dependency <predecessor_id> > <successor_id> <relationship_type><lag> `
+`<tab>depends <predecessor_id> <relationship_type> [lag] `
 
 Examples:
 ```text
-dependency 1.1 > 1.2
-dependency 3.1 > 3.2 +14d
-dependency 1.1 > 3.2 -7
+task 1.3 3w
+    depends 1.1 FF +2W
 ```
-### Predecessor / Successor
-Use task ids for references. Tasks must be previously defined in the document. 
+### Predecessor
+Use task ids for references. 
 
-`>` notation indicates direction of the dependency *not necessarily* the flow of tasks. 
-
-i.e. `dependency 1.1 > 1.2` should read "task 1.2 depends on 1.1" or "task 1.1 drives task 1.2"
+i.e. the above example should read "task 1.3 depends on 1.1"
 
 ### Relationships
 
@@ -109,29 +107,28 @@ Supported relationship types:
 Default Behavior
 - If dependency type is ommitted, default is FS
 #### Lag
-Lag values can be `+` or `-`, and must follow the dependency type without space
+Lag values can be `+` or `-`, and must follow the dependency type after a space
 
-Supported units:
- `h = hours d = days w = weeks m = months `
+Supported units (required if lag listed):
+ `h = hours d = days w = weeks`
 
 Examples:
 
-✔ `8h, 5d, 2w, 3m , 2.5d, 1.5w, ``, 7 `
+✔ `8h, 5d, 2w, 2.5d, 1.5w`
 
-✘ `5 d,  d4,  3days`
+✘ `5 d,  d4,  3days, 7`
 
 Default Behavior:
 - If no duration is specified, lag = 0
-- If no unit is specified, the default is [d]ay
 - if no sign specified, default is `+`
 
 ## Comments
-Comments use `#`:
+Comments use `;`:
 
- `# Preliminary design estimate task 1.2 Preliminary Design 30d ` 
+ `; Preliminary design estimate task 1.2 Preliminary Design 30d ` 
 
 Inline comments such as:
- `task 1.2 Design 30d # preliminary estimate ` 
+ `task 1.2 Design 30d ; preliminary estimate ` 
 are intentionally not part of the current syntax.
 
 ## Parser Principles

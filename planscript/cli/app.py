@@ -2,6 +2,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from planscript.model import Project, Task, Dependency, DependencyType
+from planscript.model.project import ValidationError
 from planscript.cli import display
 from planscript.engine.scheduler import Scheduler
 from planscript.tests import test_projects
@@ -33,6 +34,10 @@ def main_menu():
                 parser = Parser()
                 try:
                     project = parser.parse(text)
+                except ValidationError as e:
+                    print(f"Validation error: {e}")
+                    input("\nPress Enter to return...")
+                    continue
                 except ParseError as e:
                     print(f"Parse error: {e}")
                     input("\nPress Enter to return...")
