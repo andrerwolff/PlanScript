@@ -105,7 +105,7 @@ class ValidatePlan(unittest.TestCase):
         project: Test
         task 1.1 A 5d
         task 1.2 B 5d
-        dependency 1.1 > 1.2 XX
+            depends 1.1 XX
         """
 
         with self.assertRaises(ParseError):
@@ -167,7 +167,7 @@ class TestParser(unittest.TestCase):
     # ---------------------------------------------------------
     def test_complete_plan(self):
         text = """
-        # Example PlanScript project
+        ; Example PlanScript project
 
         project: Water Treatment Plant
 
@@ -178,7 +178,7 @@ class TestParser(unittest.TestCase):
         start: 2026-01-05
         finish: 2026-12-31
 
-        task 1 Design 20d
+        task 1 Design
         - discipline: Engineering
 
         task 1.1 Survey 5d
@@ -189,11 +189,11 @@ class TestParser(unittest.TestCase):
 
         task 2 Construction 
         task 2.1 Mobilization 0d
-            depends 1.3 FS-1d
+            depends 1.3 FS -1d
         task 2.2 Construction 25d
             depends 2.1 SS +2d
         task 2.3 Substantial Completion 0d
-            depends 2.2 0
+            depends 2.2 0d
         """
 
         project = self.parser.parse(text)
@@ -229,7 +229,7 @@ class TestParser(unittest.TestCase):
 
         task 1.2 Construction 10d
 
-        dependency 1.1 > 1.2
+            depends 1.1 
 
         task 1.1 Design 5d
         """
@@ -297,7 +297,7 @@ class TestParser(unittest.TestCase):
     def test_task_0_duration_is_milestone(self):
         text = """
         project: Test
-        task 1.1 Notice to Proceed 0
+        task 1.1 Notice to Proceed 0d
         """
 
         project = self.parser.parse(text)
@@ -313,6 +313,7 @@ class TestParser(unittest.TestCase):
         text = """
         project: Test
         task 1.1 Notice to Proceed
+        task 1.1.1 Meeting 0d
         """
 
         project = self.parser.parse(text)
@@ -326,8 +327,8 @@ class TestParser(unittest.TestCase):
     def test_hierarchical_task_id(self):
         text = """
         project: Test
-        task 1 Site Work 5d
-        task 1.1 Mobilization 2d
+        task 1 Site Work
+        task 1.1 Mobilization
         task 1.1.1 Survey 1d
         task 2 Closeout 3d
         """
@@ -493,11 +494,11 @@ class TestParser(unittest.TestCase):
 
     def test_comments_and_blank_lines(self):
         text = """
-        # This is a comment
+        ; This is a comment
 
         project: Test
 
-        # Another comment
+        ; Another comment
         task 1.1 Design 5d
 
 
@@ -519,7 +520,7 @@ class TestParser(unittest.TestCase):
         task 1.1 Design 5d
         task 1.2 Construction 10d
 
-        dependency 1.1 > 1.2
+            depends 1.1
         """
 
         project = self.parser.parse(text)
@@ -543,7 +544,7 @@ class TestParser(unittest.TestCase):
         task 1.1 Design 5d
         task 1.2 Construction 10d
 
-        dependency 1.1 > 1.2 FS
+            depends 1.1 FS
         """
 
         project = self.parser.parse(text)
@@ -558,7 +559,7 @@ class TestParser(unittest.TestCase):
         project: Test
         task 1.1 A 5d
         task 1.2 B 5d
-        dependency 1.1 > 1.2 2d
+            depends 1.1 2d
         """
 
         project = self.parser.parse(text)
@@ -574,7 +575,7 @@ class TestParser(unittest.TestCase):
         project: Test
         task 1.1 A 5d
         task 1.2 B 5d
-        dependency 1.1 > 1.2 -2d
+            depends 1.1 -2d
         """
 
         project = self.parser.parse(text)
@@ -594,7 +595,7 @@ class TestParser(unittest.TestCase):
         project: Test
         task 1.1 A 5d
         task 1.2 B 10d
-        dependency 1.1 > 1.2 SS
+            depends 1.1 SS
         """
 
         project = self.parser.parse(text)
@@ -610,7 +611,7 @@ class TestParser(unittest.TestCase):
         project: Test
         task 1.1 A 5d
         task 1.2 B 10d
-        dependency 1.1 > 1.2 FF
+            depends 1.1 FF
         """
 
         project = self.parser.parse(text)
@@ -625,7 +626,7 @@ class TestParser(unittest.TestCase):
         project: Test
         task 1.1 A 5d
         task 1.2 B 10d
-        dependency 1.1 > 1.2 SF
+            depends 1.1 SF
         """
 
         project = self.parser.parse(text)
@@ -644,7 +645,7 @@ class TestParser(unittest.TestCase):
         project: Test
         task 1.1 A 5d
         task 1.2 B 10d
-        dependency 1.1 > 1.2 FS +2d
+            depends 1.1 FS +2d
         """
 
         project = self.parser.parse(text)
@@ -662,7 +663,7 @@ class TestParser(unittest.TestCase):
         project: Test
         task 1.1 A 5d
         task 1.2 B 10d
-        dependency 1.1 > 1.2 FS -2d
+            depends 1.1 FS -2d
         """
 
         project = self.parser.parse(text)
@@ -680,7 +681,7 @@ class TestParser(unittest.TestCase):
         project: Test
         task 1.1 A 5d
         task 1.2 B 5d
-        dependency 1.1 > 1.2 FS 2w
+            depends 1.1 FS 2w
         """
 
         project = self.parser.parse(text)
@@ -693,55 +694,6 @@ class TestParser(unittest.TestCase):
             project.dependencies[0].lag_unit,
             "w"
         )
-        
-
-    def test_compact_type_lag_defaults_positive(self):
-        text = """
-        project: Test
-        task 1.1 A 5d
-        task 1.2 B 5d
-        dependency 1.1 > 1.2 FS2
-        """
-
-        project = self.parser.parse(text)
-
-        dependency = project.dependencies[0]
-
-        self.assertEqual(dependency.dep_type.value, "FS")
-        self.assertEqual(dependency.lag, timedelta(days=2))
-        self.assertEqual(dependency.lag_unit, "d")
-        
-
-    def test_compact_type_positive_lag(self):
-        text = """
-        project: Test
-        task 1.1 A 5d
-        task 1.2 B 5d
-        dependency 1.1 > 1.2 FS+2
-        """
-
-        project = self.parser.parse(text)
-
-        self.assertEqual(
-            project.dependencies[0].lag,
-            timedelta(days=2)
-        )
-
-    def test_compact_type_negative_lag(self):
-        text = """
-        project: Test
-        task 1.1 A 5d
-        task 1.2 B 5d
-        dependency 1.1 > 1.2 FS-2d
-        """
-
-        project = self.parser.parse(text)
-
-        self.assertEqual(
-            project.dependencies[0].lag,
-            timedelta(days=-2)
-        )
-
 
     # ---------------------------------------------------------
     # Dependency errors
@@ -786,7 +738,7 @@ class TestParser(unittest.TestCase):
             "dependency type must be separated",
             str(context.exception)
         )
-
+Tu567U23?apple
     # ---------------------------------------------------------
     # General syntax errors
     # ---------------------------------------------------------
