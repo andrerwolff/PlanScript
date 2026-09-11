@@ -54,8 +54,11 @@ task 4.2.4 Final 20w
     1.1 start
     1.2 start
 2026-01-05 1.1 progress 30%
-2026-01-06 1.2 progress +5%
+2026-01-06 1.2 progress +50%
 2025-12-15 3.2 start
-2026-09-10 3.1 progress 50%
+2026-09-10
+    3.1 start
+    3.1 progress 50%
+    1.2 progress +50%
 2026-09-01 1.1 complete
 2026-10-11 1.2 note This is a note for task 1.2

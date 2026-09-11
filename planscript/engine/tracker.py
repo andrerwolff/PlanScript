@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from enum import Enum
 
-from planscript.cli.exceptions import ValidationError
+from planscript.cli.exceptions import ValidationError, ParseError
 
 class EventDirective(Enum):
     START = "start"
@@ -52,8 +52,9 @@ class Tracker:
         return sorted(task_events,key=attrgetter('date'))
 
     def get_latest_event(self):
-        if self.events:
-            return sorted(self.events, key=attrgetter("date"))[-1]
+        events = self.get_events()
+        if events:
+            return events[-1]
         else:
             return None
 
@@ -71,20 +72,32 @@ class TaskState:
     def _derive(self, task_events):
         for event in task_events:
             if event.directive == EventDirective.START:
+                if self.status != TaskStatus.NOT_STARTED:
+                    raise ValidationError(f"Task '{self.task_id}' can only start once.")
                 self.status = TaskStatus.STARTED
             elif event.directive == EventDirective.COMPLETE:
                 self.status = TaskStatus.COMPLETED
                 self.percent_complete = 100
             elif event.directive == EventDirective.PROGRESS:
-                value = int(event.info.strip()[:-1])
+                if self.status == TaskStatus.NOT_STARTED:
+                    raise ValidationError(f"Task '{self.task_id}' must be started before progress can be made.")
+                elif self.status == TaskStatus.COMPLETED:
+                    raise ValidationError(f"Task '{self.task_id}' is already completed, cant apply progress.")
+
+                try:
+                    value = int(event.info.strip()[:-1])
+                except ValueError as e:
+                    raise ParseError(f"Log entry: '{event}' not correct syntax")
                 if any(char in event.info for char in ("+", "-")):
-                    self.percent_complete = min(100.0,max(0.0, self.percent_complete + value))
+                    result = self.percent_complete + value
+                    if result > 100 or result < 0:
+                        raise ValidationError(f"Log entry: '{event}' results in out of bounds percentage")
+                    self.percent_complete = result
                 else:
                     self.percent_complete = value
 
-                if self.percent_complete > 0:
+                if self.percent_complete >= 0:
                     self.status = TaskStatus.IN_PROGRESS
-                else:
-                    self.status = TaskStatus.NOT_STARTED
+
     def __str__(self):
         return f"{self.task_id} Status: {self.status.value}\n\tProgress: {self.percent_complete}%"

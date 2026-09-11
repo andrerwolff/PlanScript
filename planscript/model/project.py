@@ -127,11 +127,13 @@ class Project:
     def validate(self):
         # TODO build this include hierarchy validation (parser, scheduler, project)
         hierarchy = TaskHierarchy(self.tasks)
+        
         self._validate_dates()
         #self._validate_task_ids()
         self._validate_summaries(hierarchy)
         self._validate_dependencies(hierarchy)
         self._validate_task_durations()
+        self._validate_tracker()
 
     def _validate_dates(self):
         if (
@@ -180,6 +182,8 @@ class Project:
                 continue
 
             if task.duration.total_seconds() < 0:
-                raise ValidationError(
-                    f"Task '{task_id}' cannot have a negative duration."
-                )
+                raise ValidationError(f"Task '{task_id}' cannot have a negative duration.")
+
+    def _validate_tracker(self):
+        for task_id in self.tasks:
+            self.tracker.get_task_state(task_id)
