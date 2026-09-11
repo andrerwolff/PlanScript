@@ -1,6 +1,10 @@
 import unittest
+from datetime import timedelta
 
 from planscript.model.hierarchy import TaskHierarchy
+from planscript.model.project import Project, ValidationError
+from planscript.model.dependency import Dependency, DependencyType
+from planscript.model.task import Task
 
 class TestTaskHierarchy(unittest.TestCase):
 
@@ -140,3 +144,49 @@ class TestTaskHierarchy(unittest.TestCase):
 
     def test_leaf_returns_itself(self):
         assert self.hierarchy.get_leaves("1.1.b") == ["1.1.b"]
+
+    def test_validate_allows_skipped_parent_task(self):
+        project = Project("Name")
+
+        project.add_task(Task("2.1", "Design", timedelta(days=2)))
+        project.add_task(Task("2.2", "Construction", timedelta(days=3)))
+
+        project.validate()
+
+
+    def test_validate_rejects_summary_with_duration(self):
+        project = Project("Name")
+
+        project.add_task(Task("1", "Summary", timedelta(days=5)))
+        project.add_task(Task("1.1", "Task", timedelta(days=2)))
+
+        with self.assertRaises(ValidationError):
+            project.validate()
+
+
+    def test_validate_rejects_leaf_without_duration(self):
+        project = Project("Name")
+
+        project.add_task(Task("1", "Task", None))
+
+        with self.assertRaises(ValidationError):
+            project.validate()
+
+
+    def test_validate_rejects_summary_dependency(self):
+        project = Project("Name")
+
+        project.add_task(Task("1", "Summary", None))
+        project.add_task(Task("1.1", "Task", timedelta(days=2)))
+        project.add_task(Task("2", "Task", timedelta(days=1)))
+
+        dependency = Dependency(
+            project.tasks["1"],
+            project.tasks["2"],
+            DependencyType.FINISH_START
+        )
+
+        project.dependencies.append(dependency)
+
+        with self.assertRaises(ValidationError):
+            project.validate()

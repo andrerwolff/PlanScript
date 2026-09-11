@@ -1,7 +1,9 @@
 import unittest
+import textwrap
 from datetime import timedelta, date
 
 from planscript.parser.parser import Parser, ParseError
+from planscript.model.project import ValidationError
 from planscript.model.dependency import DependencyType
 
 class ValidatePlan(unittest.TestCase):
@@ -9,11 +11,11 @@ class ValidatePlan(unittest.TestCase):
             self.parser = Parser()
 
     def test_duplicate_task_id(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 Design 5d
         task 1.1 Construction 10d
-        """
+        """)
 
         with self.assertRaises(ParseError) as context:
             self.parser.parse(text)
@@ -21,11 +23,11 @@ class ValidatePlan(unittest.TestCase):
         self.assertIn("duplicate task ID '1.1'", str(context.exception))
 
     def test_duplicate_start(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
             start: 2026-01-01
             start: 2026-02-01
-        """
+        """)
 
         with self.assertRaises(ParseError) as context:
             self.parser.parse(text)
@@ -33,46 +35,46 @@ class ValidatePlan(unittest.TestCase):
         self.assertIn("duplicate start declaration", str(context.exception))
 
     def test_duplicate_finish(self):
-            text = """
-            project: Test
-                finish: 2026-01-01
-                finish: 2026-02-01
-            """
-    
-            with self.assertRaises(ParseError) as context:
-                self.parser.parse(text)
-    
-            self.assertIn("duplicate finish declaration", str(context.exception))
+        text = textwrap.dedent("""\
+        project: Test
+            finish: 2026-01-01
+            finish: 2026-02-01
+        """)
+
+        with self.assertRaises(ParseError) as context:
+            self.parser.parse(text)
+
+        self.assertIn("duplicate finish declaration", str(context.exception))
 
     def test_duplicate_calendar(self):
-            text = """
-            project: Test
-                calendar: standard
-                calendar: custom
-            """
-    
-            with self.assertRaises(ParseError) as context:
-                self.parser.parse(text)
-    
-            self.assertIn("duplicate calendar declaration", str(context.exception))
+        text = textwrap.dedent("""\
+        project: Test
+            calendar: standard
+            calendar: custom
+        """)
+
+        with self.assertRaises(ParseError) as context:
+            self.parser.parse(text)
+
+        self.assertIn("duplicate calendar declaration", str(context.exception))
 
     def test_start_after_finish(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
             start: 2026-12-31
             finish: 2026-01-01
-        """
+        """)
 
-        with self.assertRaises(ParseError) as context:
+        with self.assertRaises(ValidationError) as context:
             self.parser.parse(text)
 
         self.assertIn("start date cannot be after finish date", str(context.exception))
 
     def test_negative_duration(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 Design -5d
-        """
+        """)
 
         with self.assertRaises(ParseError) as context:
             self.parser.parse(text)
@@ -80,12 +82,12 @@ class ValidatePlan(unittest.TestCase):
         self.assertIn("cannot be negative or signed", str(context.exception))
 
     def test_negative_lag_is_valid(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 Design 5d
         task 1.2 Construction 10d
             depends 1.1 FS -2d
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -101,25 +103,25 @@ class ValidatePlan(unittest.TestCase):
             self.parser.parse_duration("abc")
 
     def test_invalid_dependency_type(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 A 5d
         task 1.2 B 5d
             depends 1.1 XX
-        """
+        """)
 
         with self.assertRaises(ParseError):
             self.parser.parse(text)
 
     def test_duplicate_dependency(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
 
         task 1.1 A 5d
         task 1.2 B 5d
             depends 1.1 SS 2d
             depends 1.1 SS 2d
-        """
+        """)
 
         with self.assertRaises(ParseError) as context:
             self.parser.parse(text)
@@ -130,7 +132,7 @@ class ValidatePlan(unittest.TestCase):
         )
 
     def test_duplicate_dependency_2(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
 
         task 1.1 A 5d
@@ -141,18 +143,18 @@ class ValidatePlan(unittest.TestCase):
             depends 1.1 SS -4d
             depends 1.1 SS 4w
             depends 1.1 FS 4h
-        """
+        """)
 
         project = self.parser.parse(text)
 
         self.assertEqual(len(project.dependencies), 6)
 
     def test_self_dependency(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 A 5d
             depends 1.1
-        """
+        """)
 
         with self.assertRaises(ParseError):
             self.parser.parse(text)
@@ -166,7 +168,7 @@ class TestParser(unittest.TestCase):
     # Complete Plan
     # ---------------------------------------------------------
     def test_complete_plan(self):
-        text = """
+        text = textwrap.dedent("""\
         ; Example PlanScript project
 
         project: Water Treatment Plant
@@ -194,7 +196,7 @@ class TestParser(unittest.TestCase):
             depends 2.1 SS +2d
         task 2.3 Substantial Completion 0d
             depends 2.2 0d
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -224,7 +226,7 @@ class TestParser(unittest.TestCase):
         self.assertEqual(d5.dep_type.value, "FS")
 
     def test_forward_dependency_reference(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
 
         task 1.2 Construction 10d
@@ -232,7 +234,7 @@ class TestParser(unittest.TestCase):
             depends 1.1 
 
         task 1.1 Design 5d
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -249,27 +251,27 @@ class TestParser(unittest.TestCase):
     # ---------------------------------------------------------
 
     def test_project(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test Project
-        """
+        """)
 
         project = self.parser.parse(text)
 
         self.assertEqual(project.name, "Test Project")
 
     def test_missing_project(self):
-        text = """
+        text = textwrap.dedent("""\
         task 1.1 Mobilization 2d
-        """
+        """)
 
         with self.assertRaises(ParseError):
             self.parser.parse(text)
 
     def test_multiple_projects(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Project One
         project: Project Two
-        """
+        """)
 
         with self.assertRaises(ParseError):
             self.parser.parse(text)
@@ -279,10 +281,10 @@ class TestParser(unittest.TestCase):
     # ---------------------------------------------------------
 
     def test_task_with_duration(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 Mobilization 5d
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -295,10 +297,10 @@ class TestParser(unittest.TestCase):
         self.assertEqual(task.duration, timedelta(days=5))
 
     def test_task_0_duration_is_milestone(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 Notice to Proceed 0d
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -310,11 +312,11 @@ class TestParser(unittest.TestCase):
         self.assertTrue(project.tasks["1.1"].is_milestone)
 
     def test_task_without_duration_is_summary(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 Notice to Proceed
         task 1.1.1 Meeting 0d
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -325,13 +327,13 @@ class TestParser(unittest.TestCase):
         self.assertEqual(task.duration, None)
 
     def test_hierarchical_task_id(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1 Site Work
         task 1.1 Mobilization
         task 1.1.1 Survey 1d
         task 2 Closeout 3d
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -341,10 +343,10 @@ class TestParser(unittest.TestCase):
         )
 
     def test_task_description_can_contain_spaces(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 Prepare construction documents 10d
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -404,30 +406,30 @@ class TestParser(unittest.TestCase):
     # ---------------------------------------------------------
 
     def test_calendar(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
             calendar: Standard
-        """
+        """)
 
         project = self.parser.parse(text)
 
         self.assertEqual(project.calendar, "Standard")
 
     def test_start(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
             start: 2026-01-01
-        """
+        """)
 
         project = self.parser.parse(text)
 
         self.assertEqual(project.start_date, date(2026,1,1))
 
     def test_finish(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
             finish: 2026-12-31
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -438,11 +440,11 @@ class TestParser(unittest.TestCase):
     # ---------------------------------------------------------
 
     def test_project_metadata(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
             - client: City of Denver
             - phase: Design
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -450,13 +452,13 @@ class TestParser(unittest.TestCase):
         self.assertEqual(project.metadata["phase"], "Design")
 
     def test_task_metadata(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
 
         task 1.1 Design 5d
             - discipline: Civil
             - responsible: Andre
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -466,17 +468,23 @@ class TestParser(unittest.TestCase):
         self.assertEqual(task.metadata["responsible"], "Andre")
 
     def test_metadata_attaches_to_previous_task(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
+            - risk_level: High
 
         task 1.1 Design 5d
             - discipline: Civil
 
         task 1.2 Construction 10d
             - discipline: Construction
-        """
+        """)
 
         project = self.parser.parse(text)
+
+        self.assertEqual(
+            project.metadata["risk_level"], 
+            "High"
+        )
 
         self.assertEqual(
             project.tasks["1.1"].metadata["discipline"],
@@ -493,7 +501,7 @@ class TestParser(unittest.TestCase):
     # ---------------------------------------------------------
 
     def test_comments_and_blank_lines(self):
-        text = """
+        text = textwrap.dedent("""\
         ; This is a comment
 
         project: Test
@@ -503,7 +511,7 @@ class TestParser(unittest.TestCase):
 
 
         task 1.2 Construction 10d
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -514,14 +522,14 @@ class TestParser(unittest.TestCase):
     # ---------------------------------------------------------
 
     def test_dependency_default_fs(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
 
         task 1.1 Design 5d
         task 1.2 Construction 10d
 
             depends 1.1
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -538,14 +546,14 @@ class TestParser(unittest.TestCase):
         self.assertEqual(dependency.lag_unit, "d")
 
     def test_dependency_explicit_fs(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
 
         task 1.1 Design 5d
         task 1.2 Construction 10d
 
             depends 1.1 FS
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -555,12 +563,12 @@ class TestParser(unittest.TestCase):
         self.assertEqual(dependency.lag_unit, "d")
 
     def test_lag_without_type_defaults_to_fs(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 A 5d
         task 1.2 B 5d
             depends 1.1 2d
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -571,12 +579,12 @@ class TestParser(unittest.TestCase):
         self.assertEqual(dependency.lag_unit, "d")
 
     def test_negative_lag_without_type_defaults_to_fs(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 A 5d
         task 1.2 B 5d
             depends 1.1 -2d
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -591,12 +599,12 @@ class TestParser(unittest.TestCase):
     # ---------------------------------------------------------
 
     def test_dependency_ss(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 A 5d
         task 1.2 B 10d
             depends 1.1 SS
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -607,12 +615,12 @@ class TestParser(unittest.TestCase):
         self.assertEqual(project.dependencies[0].lag_unit, "d")
 
     def test_dependency_ff(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 A 5d
         task 1.2 B 10d
             depends 1.1 FF
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -622,12 +630,12 @@ class TestParser(unittest.TestCase):
         )
 
     def test_dependency_sf(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 A 5d
         task 1.2 B 10d
             depends 1.1 SF
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -641,12 +649,12 @@ class TestParser(unittest.TestCase):
     # ---------------------------------------------------------
 
     def test_positive_lag(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 A 5d
         task 1.2 B 10d
             depends 1.1 FS +2d
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -659,12 +667,12 @@ class TestParser(unittest.TestCase):
         self.assertEqual(dependency.lag_unit, "d")
 
     def test_negative_lag(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 A 5d
         task 1.2 B 10d
             depends 1.1 FS -2d
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -677,12 +685,12 @@ class TestParser(unittest.TestCase):
         self.assertEqual(dependency.lag_unit, "d")
 
     def test_lag_without_sign_defaults_to_positive(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 A 5d
         task 1.2 B 5d
             depends 1.1 FS 2w
-        """
+        """)
 
         project = self.parser.parse(text)
 
@@ -700,36 +708,36 @@ class TestParser(unittest.TestCase):
     # ---------------------------------------------------------
 
     def test_unknown_predecessor(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.2 Construction 10d
             depends 1.1
-        """
+        """)
 
         with self.assertRaises(ParseError) as context:
             self.parser.parse(text)
 
-        self.assertIn("Line 4", str(context.exception))
+        self.assertIn("Line 3", str(context.exception))
         self.assertIn("unknown predecessor task '1.1'", str(context.exception))
 
     def test_invalid_dependency_relationship(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 Design 5d
         task 1.2 Construction 10d
             depends nonsense -2w
-        """
+        """)
 
         with self.assertRaises(ParseError):
             self.parser.parse(text)
 
     def test_compact_dependency_type_is_rejected(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         task 1.1 A 5d
         task 1.2 B 5d
             depends 1.1FS
-        """
+        """)
 
         with self.assertRaises(ParseError) as context:
             self.parser.parse(text)
@@ -744,19 +752,19 @@ class TestParser(unittest.TestCase):
     # ---------------------------------------------------------
 
     def test_unrecognized_syntax(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
         this is not valid syntax
-        """
+        """)
 
         with self.assertRaises(ParseError):
             self.parser.parse(text)
 
     def test_metadata_without_entry(self):
-        text = """
+        text = textwrap.dedent("""\
         project: Test
             - client: Denver
-        """
+        """)
 
         # Depending on intended syntax, this currently attaches
         # metadata to the project. If that's intentional, remove

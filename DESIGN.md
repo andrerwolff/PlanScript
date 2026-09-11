@@ -57,12 +57,17 @@ PlanScript file
         * defaults to FS if not specified 
     * `lag`: timedelta, + or - 
         * defaults to 0 if not specified
+* `TaskHierarchy`
+    * `tasks`: list of task_ids
+    * `parents`: dict, [task_id, tasks parent_id] 
+    * `children`: dict, [task_id, [all child_ids of task]
 * `Calendar` (not yet implemented)
 
 ## Engine / Scheduler
 
 * `Schedule`
     * `project`: Project
+    * `hierarchy`: Hierarchy, object that holds the hierarchical order of tasks with methods for calling various aspects
     * `ordered_task_ids`: 1d array, [task_id] in topological order
     * `early_start`: dict, [task_id, timedelta] representing list of all tasks early starts
     * `early_finish`: dict, [task_id, timedelta] representing list of all tasks early finishes
@@ -72,6 +77,8 @@ PlanScript file
     * `critical_tasks`: 1d array, [task_id] that are identified as critical tasks (float = 0)
     * `critical_paths`: 2d array, [[path-1], [path-2], [path-n]] of ordered task_ids that represent critical paths
     * `duration`: timedelta: total project duration (maximum EF)
+    * `start_dates`: dict, [task_id, date] representing list of all tasks start dates
+    * `finish_dates`: dict, [task_id, date] representing list of all tasks finish dates
 
 * `Scheduler.calculate()`: returns a Schedule object
     * `_topological_sort()`: returns `ordered_task_ids`
@@ -80,6 +87,7 @@ PlanScript file
     * `_float()`: returns `total_float`
     * `_critical_tasks()`: returns `critical_tasks`
     * `_find_critical_paths()`: returns `critical_paths` using recursive `walk()` method
+    * `_get_dates()`: returns `start_dates`, `finish dates`
 
 ## CLI
 

@@ -124,10 +124,11 @@ class Project:
 
     def validate(self):
         # TODO build this include hierarchy validation (parser, scheduler, project)
+        hierarchy = TaskHierarchy(self.tasks)
         self._validate_dates()
-        self._validate_task_ids()
-        self._validate_summaries()
-        self._validate_dependencies()
+        #self._validate_task_ids()
+        self._validate_summaries(hierarchy)
+        self._validate_dependencies(hierarchy)
         self._validate_task_durations()
 
     def _validate_dates(self):
@@ -137,11 +138,21 @@ class Project:
             and self.start_date > self.finish_date):
             raise ValidationError("Project start date cannot be after finish date.")
 
+    #Not enforced
     def _validate_task_ids(self):
-        pass
+        for task_id in self.tasks:
+            parts = task_id.split(".")
 
-    def _validate_summaries(self):
-        hierarchy = TaskHierarchy(self.tasks)
+            for index in range(1, len(parts)):
+                parent_id = ".".join(parts[:index])
+
+                if parent_id not in self.tasks:
+                    raise ValidationError(
+                        f"Task '{task_id}' has missing parent task '{parent_id}'."
+                    )
+
+
+    def _validate_summaries(self, hierarchy):
 
         for task_id, task in self.tasks.items():
             if hierarchy.has_children(task_id):
@@ -150,13 +161,23 @@ class Project:
             elif task.duration is None:
                 raise ValidationError(f"Task '{task_id}' must have a duration.")
 
-    def _validate_dependencies(self):
-        hierarchy = TaskHierarchy(self.tasks)
+    def _validate_dependencies(self, hierarchy):
 
         for dependency in self.dependencies:
             predecessor_id = dependency.predecessor.number
+            successor_id = dependency.successor.number
             if hierarchy.is_summary(predecessor_id):
                 raise ValidationError(f"Task '{predecessor_id}' is a 'Summary Task' and cannot be a predecessor.")
 
+            if hierarchy.is_summary(successor_id):
+                raise ValidationError(f"Task '{successor_id}' is a 'Summary Task' and cannot be a succcessor.")
+
     def _validate_task_durations(self):
-        pass
+        for task_id, task in self.tasks.items():
+            if task.duration is None:
+                continue
+
+            if task.duration.total_seconds() < 0:
+                raise ValidationError(
+                    f"Task '{task_id}' cannot have a negative duration."
+                )
