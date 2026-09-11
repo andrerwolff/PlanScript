@@ -127,6 +127,9 @@ Invalid project definitions should produce clear errors rather than crashes or s
 
 Parser validation includes malformed syntax, unknown tasks, and invalid dependencies.
 
+
+
+
 ## Testing
 
 Use Python `unittest`.
@@ -142,3 +145,5 @@ Tests should cover:
 * CPM calculations
 * Critical path
 * Edge cases
+
+

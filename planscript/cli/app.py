@@ -95,6 +95,8 @@ def project_menu(project):
             #render(project, schedule)
             schedule_menu(project, schedule)
 
+        elif choice == "l":
+            display.render_log(project)
 
         elif choice == "s":
             # Implement save project functionality here

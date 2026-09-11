@@ -1,14 +1,14 @@
 from dataclasses import dataclass, field
-from datetime import timedelta, date
+from datetime import timedelta, date, datetime
 
+from planscript.cli.exceptions import ValidationError
 from planscript.model import dependency
 from planscript.model.calendar import Calendar
 from planscript.model.dependency import Dependency, DependencyType
 from planscript.model.task import Task
 from planscript.model.hierarchy import TaskHierarchy
+from planscript.engine.tracker import Tracker
 
-class ValidationError(Exception):
-    pass
 
 
 
@@ -22,6 +22,8 @@ class Project:
     tasks: dict[str, Task] = field(default_factory=dict)
     dependencies: list[Dependency] = field(default_factory=list)
     calendar: dict[str, Calendar] = field(default_factory=dict)
+
+    tracker: Tracker = field(default_factory=Tracker)
 
     metadata: dict = field(default_factory=dict)
 

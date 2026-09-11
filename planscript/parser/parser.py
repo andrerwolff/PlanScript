@@ -2,14 +2,11 @@ import re
 from datetime import timedelta, date
 from dataclasses import dataclass
 
-from planscript.model.project import Project, ValidationError
+from planscript.cli.exceptions import ParseError, ValidationError
+from planscript.model.project import Project
 from planscript.model.task import Task
 from planscript.model.dependency import Dependency
-
-
-
-class ParseError(Exception):
-    pass
+from planscript.engine.tracker import TrackingEvent, EventDirective
 
 @dataclass
 class PendingDependency:
@@ -22,36 +19,7 @@ class PendingDependency:
 
 class Parser:
 
-    INDENTED_DIRECTIVE_PATTERN = re.compile(
-        r"^[ \t]+(?P<directive>[-A-Za-z]+)"
-    )
-
-    TASK_PATTERN = re.compile(
-        r"^task\s+"
-        r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
-        r"(?P<name>.+?)"
-        r"(?:\s+(?P<duration>\d+(?:\.\d+)?[hdw]))?$"
-    )
-
-    INVALID_TASK_DURATION_PATTERN = re.compile(
-        r"^task\s+"
-        r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
-        r"(?P<description>.+?)\s+"
-        r"(?P<duration>[+-]\d+(?:\.\d+)?[hdwm]?)$"
-    )
-
-    DEPENDENCY_PATTERN = re.compile(
-        r"^(?: {4}|\t)depends\s+"
-        r"(?P<predecessor>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)"
-        r"(?:\s+(?P<type>FS|SS|FF|SF))?"
-        r"(?:\s+(?P<lag>[+-]?\d+(?:\.\d+)?[hdw]))?$"
-    )
-
-    ATTACHED_DEPENDENCY_TYPE_PATTERN = re.compile(
-        r"^(?: {4}|\t)depends\s+"
-        r"(?P<predecessor>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)(?P<type>FS|SS|FF|SF)"
-)
-        
+    #standard plan patterns
     PROJECT_PATTERN = re.compile(
         r"^project:\s*(?P<name>.+)$",
         re.IGNORECASE
@@ -73,11 +41,54 @@ class Parser:
         r"^(?: {4}|\t)-\s+(?P<key>[^:]+):\s+(?P<value>.*)$"
     )
 
+    TASK_PATTERN = re.compile(
+        r"^task\s+"
+        r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
+        r"(?P<name>.+?)"
+        r"(?:\s+(?P<duration>\d+(?:\.\d+)?[hdw]))?$"
+    )
+
+    DEPENDENCY_PATTERN = re.compile(
+        r"^(?: {4}|\t)depends\s+"
+        r"(?P<predecessor>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)"
+        r"(?:\s+(?P<type>FS|SS|FF|SF))?"
+        r"(?:\s+(?P<lag>[+-]?\d+(?:\.\d+)?[hdw]))?$"
+    )
+
+    #Error Plan patterns
+    INVALID_TASK_DURATION_PATTERN = re.compile(
+        r"^task\s+"
+        r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
+        r"(?P<description>.+?)\s+"
+        r"(?P<duration>[+-]\d+(?:\.\d+)?[hdwm]?)$"
+    )
+
+    ATTACHED_DEPENDENCY_TYPE_PATTERN = re.compile(
+        r"^(?: {4}|\t)depends\s+"
+        r"(?P<predecessor>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)(?P<type>FS|SS|FF|SF)"
+    )
+
+    #Standard Tracking Patterns
+    TRACKING_DATE_PATTERN = re.compile(
+        r"^(?P<date>\d{4}-\d{2}-\d{2})$"
+    )
+
+    TRACKING_ENTRY_PATTERN = re.compile(
+        r"^(?: {4}|\t)(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
+        r"(?P<directive>.+?)$"
+    )
+    TRACKING_PATTERN = re.compile(
+        r"^(?P<date>\d{4}-\d{2}-\d{2})\s+"
+        r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
+        r"(?P<directive>.+?)$"
+    )
+
     def parse(self, text):
 
         project = None
         current_entry = None
         current_task = None
+        tracking_date = None
         seen_project_attributes = set()
         pending_dependencies = []
 
@@ -169,13 +180,13 @@ class Parser:
                 name = match.group("name").strip()
                 duration, duration_unit = self.parse_duration(match.group("duration"))
 
-                if duration is not None:
-                    if duration < timedelta(0):
-                        raise ParseError(f"Duration cannot be negative: '{value}'")
-                
-                    if task_id in project.tasks:
-                        raise ParseError(f"Line {line_number}: duplicate task ID '{task_id}'")
+                if task_id in project.tasks:
+                    raise ParseError(f"Line {line_number}: duplicate task ID '{task_id}'")
 
+                if duration is not None and duration < timedelta(0):
+                    # TODO is this tested anywhere?
+                    raise ParseError(f"Duration cannot be negative: '{duration}'")
+                
                 task = Task(task_id, name, duration)
 
                 project.add_task(task)
@@ -183,22 +194,20 @@ class Parser:
                 current_entry = task
                 continue
 
-            # Dependency
+            # Invalid Dependency
             match = self.ATTACHED_DEPENDENCY_TYPE_PATTERN.match(line)
             if match:
                 raise ParseError(
                     f"Line {line_number}: dependency type must be separated "
                     f"from successor task ID by whitespace"
                 )
-            
+            #Dependency
             match = self.DEPENDENCY_PATTERN.match(line)
             if match:
                 predecessor_id = match.group("predecessor")
                 successor_id = current_task
                 dep_type = match.group("type")
                 lag = match.group("lag")
-
-                # depreciated delete successor_id, dep_type, lag = self.parse_dependency(relationship, project, line_number)
 
                 if dep_type is None:
                     dep_type = "FS"
@@ -217,7 +226,54 @@ class Parser:
 
                 current_entry = project
                 continue
-            
+
+            #Tracking Main
+            match = self.TRACKING_PATTERN.match(line)
+            if match:
+                event_date = self.parse_date(match.group("date"), line_number)
+                task_id = match.group("id")
+                full_directive = match.group("directive")
+
+                if task_id not in project.tasks:
+                    raise ParseError(f"Line {line_number}: Task ID '{task_id}' is not in the project.")
+
+                directive, info = self.parse_event_directive(full_directive, line_number)
+                tracking_event = TrackingEvent(event_date, task_id, directive, info)
+                    
+                project.tracker.add_event(tracking_event)
+
+                tracking_date = None
+                current_entry = project
+                continue
+
+            # Tracking date header for multi line
+            match = self.TRACKING_DATE_PATTERN.match(line)
+            if match:
+                tracking_date = self.parse_date(match.group("date"),line_number)
+                current_entry = project
+                continue
+
+            # Tracking entry under a date
+            match = self.TRACKING_ENTRY_PATTERN.match(line)
+            if match:
+                if tracking_date is None:
+                    raise ParseError(f"Line {line_number}: Tracking entry has no date.")
+
+                task_id = match.group("id")
+                full_directive = match.group("directive")
+
+                if task_id not in project.tasks:
+                    raise ParseError(f"Line {line_number}: Task ID '{task_id}' is not in the project.")
+
+                directive, info = self.parse_event_directive(full_directive,line_number)
+                tracking_event = TrackingEvent(tracking_date,task_id,directive,info)
+
+                project.tracker.add_event(tracking_event)
+
+                current_entry = project
+                continue
+
+            # nothing recognized
             raise ParseError(f"Line {line_number}: unrecognized syntax: {line}")
 
         if project is None:
@@ -259,132 +315,7 @@ class Parser:
 
         raise ParseError(f"Invalid duration: {value}")
 
-    def parse_dependency(self, relationship, project, line_number):
-        relationship = relationship.strip()
-
-        if not relationship:
-            raise ParseError(
-                f"Line {line_number}: empty dependency relationship"
-            )
-
-        # ---------------------------------------------------------
-        # Separate successor from the remainder.
-        #
-        # The successor is always the first whitespace-delimited
-        # token.
-        # ---------------------------------------------------------
-
-        parts = relationship.split(maxsplit=1)
-
-        successor_id = parts[0]
-        remainder = parts[1].strip() if len(parts) > 1 else ""
-
-        # ---------------------------------------------------------
-        # Reject compact successor + dependency type.
-        #
-        # 1.2FS
-        # 1.2SS
-        # 1.2FF
-        # 1.2SF
-        # ---------------------------------------------------------
-
-        if re.fullmatch(
-            r"[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*(?:FS|SS|FF|SF)",
-            successor_id,
-            re.IGNORECASE,
-        ):
-            raise ParseError(
-                f"Line {line_number}: dependency type must be separated "
-                f"from successor task ID by whitespace"
-            )
-
-        dependency_type = None
-        lag = None
-
-        # No type or lag
-        if not remainder:
-            return successor_id, dependency_type, lag
-
-        # ---------------------------------------------------------
-        # Type + optional lag
-        #
-        # FS
-        # FS2
-        # FS+2
-        # FS-2d
-        # ---------------------------------------------------------
-
-        type_match = re.fullmatch(
-            r"(?P<type>FS|SS|FF|SF)"
-            r"(?P<lag>[+-]?\d+(?:\.\d+)?[hdwm]?)?",
-            remainder,
-            re.IGNORECASE,
-        )
-
-        if type_match:
-            dependency_type = type_match.group("type").upper()
-            lag = type_match.group("lag")
-
-            if lag is not None and lag[0] not in "+-":
-                lag = "+" + lag
-
-            return successor_id, dependency_type, lag
-
-        # ---------------------------------------------------------
-        # Type followed by separated lag
-        #
-        # FS 2
-        # FS +2
-        # FS -2d
-        # ---------------------------------------------------------
-
-        type_lag_match = re.fullmatch(
-            r"(?P<type>FS|SS|FF|SF)"
-            r"\s+"
-            r"(?P<lag>[+-]?\d+(?:\.\d+)?[hdwm]?)",
-            remainder,
-            re.IGNORECASE,
-        )
-
-        if type_lag_match:
-            dependency_type = type_lag_match.group("type").upper()
-            lag = type_lag_match.group("lag")
-
-            if lag[0] not in "+-":
-                lag = "+" + lag
-
-            return successor_id, dependency_type, lag
-
-        # ---------------------------------------------------------
-        # Lag without type
-        #
-        # 2
-        # +2
-        # -2d
-        # ---------------------------------------------------------
-
-        lag_match = re.fullmatch(
-            r"[+-]?\d+(?:\.\d+)?[hdwm]?",
-            remainder,
-            re.IGNORECASE,
-        )
-
-        if lag_match:
-            lag = lag_match.group(0)
-
-            if lag[0] not in "+-":
-                lag = "+" + lag
-
-            return successor_id, dependency_type, lag
-
-        # ---------------------------------------------------------
-        # Anything else is invalid
-        # ---------------------------------------------------------
-
-        raise ParseError(
-            f"Line {line_number}: invalid dependency relationship "
-            f"'{relationship}'"
-        )       
+    
     def parse_date(self, value, line_number):
         try:
             return date.fromisoformat(value)
@@ -412,3 +343,24 @@ class Parser:
                 ):
                     raise ParseError(f"Line {d.line_number}: duplicate dependency '{d.predecessor_id}' > '{d.successor_id}'")
             project.add_dependency(predecessor, successor, d.dep_type, d.lag, d.lag_unit)
+
+    def parse_event_directive(self, full_directive, line_number):
+        parts = full_directive.strip().split(maxsplit=1)
+
+        if len(parts) == 1:
+            word = parts[0]
+            if word in ["start", "complete"]:
+                directive = word
+                info = None
+        elif len(parts) == 2:
+            first, second = parts
+            #temp parse error handling, expand when more directives
+            if first == "progress" and "%" in second:
+                directive = first
+                info = second
+            elif first == "note":
+                directive = first
+                info = second
+            else:
+                raise ParseError(f"Lineb {line_number}: Event Syntax Error '{full_directive}'")
+        return (EventDirective(directive), info)

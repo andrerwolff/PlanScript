@@ -1,4 +1,7 @@
+from operator import attrgetter
+
 from planscript.model.task import Task
+
 
 
 def show_main_menu():
@@ -26,6 +29,7 @@ def show_project_menu(project):
     print("  [D] Dependencies")
     print("  [P] Project Properties")
     print("  [V] View Schedule")
+    print("  [L] Inspect Log")
     print("  [S] Save Project")
     print("  [B] Back to Main Menu")
     print("  [Q] Quit")
@@ -243,3 +247,23 @@ def view_schedule_scheduled(project, schedule):
         print(" → ".join(str(task) for task in path))
     input("Press Enter to continue...")
     return f"-"* 69
+
+def render_log(project):
+    print()
+    print(f"    PROJECT: {project.name}")
+    print("-" * 50)
+    print("|| Begin Log ||")
+    print("-" * 25)
+    for event in project.tracker.get_events():
+        print(event)
+    print("-" * 25)
+    print("|| End Log ||")
+    print("-" * 50)
+    print(project.tracker.get_task_state("1.1"))
+    print(project.tracker.get_task_state("1.2"))
+    print(project.tracker.get_task_state("3.1"))
+    print(project.tracker.get_task_state("3.2"))
+    print(project.tracker.get_task_state("4.2.2"))
+    input("Press Enter to continue...")
+    return f"-"* 69
+    
