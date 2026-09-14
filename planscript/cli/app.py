@@ -87,13 +87,13 @@ def project_menu(project):
         elif choice == "v":
             scheduler = Scheduler()
             try:
-                schedule = scheduler.calculate(project)
+                project.schedule = scheduler.calculate(project)
             except ValueError as e:
                 print(f"Scheduling error: {e}")
                 return
             #display.view_schedule_scheduled(project, schedule)
             #render(project, schedule)
-            schedule_menu(project, schedule)
+            schedule_menu(project)
 
         elif choice == "l":
             display.render_log(project)
@@ -113,18 +113,18 @@ def project_menu(project):
             print("Exiting the application.")
             exit()
 
-def schedule_menu(project, schedule):
+def schedule_menu(project):
     while True:
-        choice = display.show_schedule_menu(project, schedule)
+        choice = display.show_schedule_menu(project)
 
         if choice == "c":
-            display.view_schedule_calculated(project, schedule)
+            display.view_schedule_calculated(project)
 
         elif choice == "d":
-            display.view_schedule_scheduled(project, schedule)
+            display.view_schedule_scheduled(project)
 
         elif choice == "g":
-            render(project, schedule)
+            render(project)
 
         elif choice == "b":
                     break

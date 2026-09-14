@@ -8,6 +8,7 @@ from planscript.model.dependency import Dependency, DependencyType
 from planscript.model.task import Task
 from planscript.model.hierarchy import TaskHierarchy
 from planscript.engine.tracker import Tracker
+from planscript.engine.scheduler import Schedule
 
 
 
@@ -23,9 +24,23 @@ class Project:
     dependencies: list[Dependency] = field(default_factory=list)
     calendar: dict[str, Calendar] = field(default_factory=dict)
 
+    schedule: Schedule | None = None
     tracker: Tracker = field(default_factory=Tracker)
 
     metadata: dict = field(default_factory=dict)
+
+    # TODO eventually separate into own Performance class
+    def start_variance(self, task_id):
+        actual = self.tracker.actual_start(task_id)
+        if actual is None:
+            return None
+        return actual - self.schedule.start_dates[task_id]
+    
+    def finish_variance(self, task_id):
+        actual = self.tracker.actual_finish(task_id)
+        if actual is None:
+            return None
+        return  actual - self.schedule.finish_dates[task_id]
 
 
     def add_task(self, task: Task) -> None:

@@ -1,50 +1,16 @@
 from datetime import timedelta, date
-from planscript.model.project import Project
+from dataclasses import dataclass
+
+from planscript.model.schedule import Schedule
 from planscript.model.hierarchy import TaskHierarchy
 from planscript.model.dependency import DependencyType
 from collections import deque
 
 
-class Schedule:
-    def __init__(self, project, ordered_task_ids, early_start, early_finish,
-        late_start, late_finish, total_float, critical_tasks, critical_paths, duration,
-        start_dates, finish_dates):
-
-        self.project = project
-        self.hierarchy = TaskHierarchy(project.tasks)
-
-        self.ordered_task_ids = ordered_task_ids
-        self.early_start = early_start
-        self.early_finish = early_finish
-        self.late_start = late_start
-        self.late_finish = late_finish
-        self.total_float = total_float
-        self.critical_tasks = critical_tasks
-        self.critical_paths = critical_paths
-        self.duration = duration
-        self.start_dates = start_dates
-        self.finish_dates = finish_dates
-
-        self._rollup_summary_dates()
-
-    def _rollup_summary_dates(self):
-        for task_id in reversed(self.ordered_task_ids):
-            if self.hierarchy.is_summary(task_id):
-                decendant_starts = []
-                decendant_finishes = []
-                for child in self.hierarchy.get_descendants(task_id):
-                    decendant_starts.append(self.start_dates[child])
-                    decendant_finishes.append(self.finish_dates[child])
-
-                self.start_dates[task_id] = min(decendant_starts)
-                self.finish_dates[task_id] = max(decendant_finishes)
-                self.total_float[task_id] = "-"
-
-
 class Scheduler:
     
     def calculate(self, project):
-        
+        hierarchy = TaskHierarchy(project.tasks)
         ordered_task_ids = self._topological_sort(project)
         early_start, early_finish = self._forward_pass(project, ordered_task_ids)
         late_start, late_finish, duration = self._backward_pass(project, ordered_task_ids, early_finish)
@@ -53,7 +19,7 @@ class Scheduler:
         critical_paths = self._find_critical_paths(project, critical_tasks)
         start_dates, finish_dates = self._get_dates(project, early_start, early_finish)
 
-        return Schedule(project = project,
+        return Schedule(hierarchy = hierarchy,
             ordered_task_ids = ordered_task_ids,
             early_start = early_start,
             early_finish = early_finish,

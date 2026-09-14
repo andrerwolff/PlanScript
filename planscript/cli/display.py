@@ -164,7 +164,7 @@ def select_dependency(project, action: str):
         print("Invalid dependency index.")
         return
 
-def show_schedule_menu(project, schedule):
+def show_schedule_menu(project):
     print()
     print("=" * 50)
     print(f"  Project: {project.name}")
@@ -179,21 +179,22 @@ def show_schedule_menu(project, schedule):
     return input("  Select an option: ").strip().lower()
     
 
-def view_schedule_calculated(project, schedule):
+def view_schedule_calculated(project):
+    schedule = project.schedule
     tree = schedule.hierarchy.get_tree()
     c1 = len(max(tree.values(), key=len))
     print()
     print(f"    PROJECT: {project.name}")
     print(f"    Duration: {schedule.duration}")
-    print(f"    Target Start: {schedule.project.start_date}")
-    print(f"    Target Finish: {schedule.project.finish_date}")
+    print(f"    Target Start: {project.start_date}")
+    print(f"    Target Finish: {project.finish_date}")
     print("~" * 69)
     print()
     print(f"|{'ID':<{c1}}|{'TASK':<25}|{'DUR':^5}|{'ES':^5}|{'EF':^5}|{'LS':^5}|{'LF':^5}|{'FLOAT':^5}|")
     print("-" *69)
 
     for task_id in tree:
-        task = schedule.project.tasks[task_id]
+        task = project.tasks[task_id]
 
         if schedule.hierarchy.is_summary(task_id):
             d,es,ef,ls,lf,f = ("-","-","-","-","-","-")
@@ -215,15 +216,16 @@ def view_schedule_calculated(project, schedule):
         print(" → ".join(str(task) for task in path))
     input("Press Enter to continue...")
 
-def view_schedule_scheduled(project, schedule):
+def view_schedule_scheduled(project):
+    schedule = project.schedule
     tree = schedule.hierarchy.get_tree()
     c1 = len(max(tree.values(), key=len))
     print(c1)
     print()
     print(f"    PROJECT: {project.name}")
     print(f"    Duration: {schedule.duration}")
-    print(f"    Target Start: {schedule.project.start_date}")
-    print(f"    Target Finish: {schedule.project.finish_date}")
+    print(f"    Target Start: {project.start_date}")
+    print(f"    Target Finish: {project.finish_date}")
     print("~" * 69)
     print()
     print(f"|{'ID':<{c1+1}}|{'TASK':<25}|{'START':^10}|{'END':^10}|{'FLOAT':^7}|")
@@ -231,7 +233,7 @@ def view_schedule_scheduled(project, schedule):
 
     
     for task_id in tree:
-        task = schedule.project.tasks[task_id]
+        task = project.tasks[task_id]
         start = schedule.start_dates[task_id]
         end = schedule.finish_dates[task_id]
         if schedule.total_float[task_id] == "-":
