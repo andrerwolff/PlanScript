@@ -214,6 +214,8 @@ class Scheduler:
             start = start_date + early_start[task_id]
             start_dates[task_id] = start
         for task_id in early_finish:
-            finish = start_date + early_finish[task_id]
+            finish = start_date + timedelta(early_finish[task_id].days -1)
+            if finish < start_date:
+                    finish = start_date
             finish_dates[task_id] = finish
         return start_dates, finish_dates

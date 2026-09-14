@@ -6,6 +6,7 @@ from planscript.cli.exceptions import ParseError, ValidationError
 from planscript.model.project import Project
 from planscript.model.task import Task
 from planscript.model.dependency import Dependency
+from planscript.model.hierarchy import TaskHierarchy
 from planscript.engine.tracker import TrackingEvent, EventDirective
 
 @dataclass
@@ -281,6 +282,7 @@ class Parser:
 
         self.resolve_dependencies(project, pending_dependencies)
         project.validate()
+        project.tracker.hierarchy = TaskHierarchy(project.tasks)
 
         return project
 

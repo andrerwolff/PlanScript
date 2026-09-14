@@ -1,0 +1,61 @@
+project: Variance Test Project
+    start: 2026-10-01
+    finish: 2026-11-30
+
+task 1 Project Management
+task 1.1 Kickoff 0d
+task 1.2 Project Plan 5d
+    depends 1.1
+
+task 2 Design
+task 2.1 Preliminary Design
+task 2.1.1 Site Layout 5d
+    depends 1.2
+task 2.1.2 Utility Design 10d
+    depends 2.1.1
+task 2.2 Final Design 5d
+    depends 2.1.2
+
+task 3 Construction
+task 3.1 Mobilization 3d
+    depends 2.2
+task 3.2 Installation 15d
+    depends 3.1 FS 0d
+task 3.3 Inspection 0d
+    depends 3.2 FS 0d
+task 3.4 Closeout 5d
+    depends 3.3 FS 0d
+
+task 4 Untracked Work
+task 4.1 Future Task 10d
+    depends 2.2
+
+;Tracking:
+2026-10-01
+    1.1 start
+    1.1 complete
+
+2026-10-03 1.2 start
+2026-10-09 1.2 progress 60%
+2026-10-12 1.2 complete
+2026-10-13
+    2.1.1 start
+    2.1.1 complete
+
+2026-10-15 2.1.2 start
+2026-10-24 2.1.2 complete
+2026-10-25 2.2 start
+
+2026-10-31 2.2 complete
+2026-11-03 3.1 start
+2026-11-05
+    3.1 complete
+2026-11-06 3.2 start
+2026-11-20
+    3.2 progress 75%
+2026-11-25 3.2 complete
+
+2026-11-26
+    3.3 start
+    3.3 complete
+2026-11-27 3.4 start

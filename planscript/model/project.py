@@ -42,6 +42,20 @@ class Project:
             return None
         return  actual - self.schedule.finish_dates[task_id]
 
+    def duration_variance(self, task_id):
+        
+        planned = self.tasks[task_id].duration
+        if planned == timedelta(0):
+            return timedelta(0)
+        elif planned == None:
+            planned = self.schedule.finish_dates[task_id] - self.schedule.start_dates[task_id] + timedelta(days=1)
+
+        actual = self.tracker.actual_duration(task_id)
+
+        if actual is None:
+            return None
+
+        return actual - planned
 
     def add_task(self, task: Task) -> None:
         if task.number in self.tasks:

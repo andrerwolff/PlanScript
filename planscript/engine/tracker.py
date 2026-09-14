@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from enum import Enum
 
 from planscript.cli.exceptions import ValidationError, ParseError
+from planscript.model.hierarchy import TaskHierarchy
 
 class EventDirective(Enum):
     START = "start"
@@ -33,26 +34,70 @@ class TrackingEvent:
 
 @dataclass
 class Tracker:
+    hierarchy: TaskHierarchy | None = None
     events: list[TrackingEvent] = field(default_factory=list)
 
     def actual_start(self, task_id):
+        if self.hierarchy is None:
+            raise ValidationError(f"Hierarchy not working")
+        
+        if self.hierarchy.is_summary(task_id):
+            starts = []
+            for child_id in self.hierarchy.children[task_id]:
+                start = self.actual_start(child_id)
+
+                if start is not None:
+                    starts.append(start)
+
+            if starts:
+                return min(starts)
+            return None
+
         for event in self.get_task_events(task_id):
             if event.directive == EventDirective.START:
                 return event.date
         return None
 
     def actual_finish(self, task_id):
+        if self.hierarchy is None:
+            raise ValidationError(f"Hierarchy not working")
+
+        if self.hierarchy.is_summary(task_id):
+            finishes = []
+            for child_id in self.hierarchy.children[task_id]:
+                finish = self.actual_finish(child_id)
+
+                if finish is not None:
+                    finishes.append(finish)
+                else:
+                    return None
+
+            if finishes:
+                return max(finishes)
+            return None
+
         for event in self.get_task_events(task_id):
             if event.directive == EventDirective.COMPLETE:
                 return event.date
         return None
 
     def actual_dates(self, task_id):
+        start = self.actual_start(task_id)
+        finish = self.actual_finish(task_id)
         actual_dates = {
-            "start" : self.actual_start(task_id),
-            "finish" : self.actual_finish(task_id)
+            "start" : start,
+            "finish" : finish,
         }
         return actual_dates
+
+    def actual_duration(self, task_id):
+        start = self.actual_start(task_id)
+        finish = self.actual_finish(task_id)
+
+        if start is None or finish is None:
+            return None
+        
+        return finish - start + timedelta(days=1)
 
     def add_event(self, tracking_event: TrackingEvent):
         if tracking_event in self.events:
