@@ -35,6 +35,25 @@ class TrackingEvent:
 class Tracker:
     events: list[TrackingEvent] = field(default_factory=list)
 
+    def actual_start(self, task_id):
+        for event in self.get_task_events(task_id):
+            if event.directive == EventDirective.START:
+                return event.date
+        return None
+
+    def actual_finish(self, task_id):
+        for event in self.get_task_events(task_id):
+            if event.directive == EventDirective.COMPLETE:
+                return event.date
+        return None
+
+    def actual_dates(self, task_id):
+        actual_dates = {
+            "start" : self.actual_start(task_id),
+            "finish" : self.actual_finish(task_id)
+        }
+        return actual_dates
+
     def add_event(self, tracking_event: TrackingEvent):
         if tracking_event in self.events:
             raise ValidationError(f"Event '{tracking_event}' already exists in the project.")
@@ -71,11 +90,17 @@ class TaskState:
 
     def _derive(self, task_events):
         for event in task_events:
-            if event.directive == EventDirective.START:
+            if event.directive == EventDirective.NOTE:
+                pass
+            elif event.directive == EventDirective.START:
                 if self.status != TaskStatus.NOT_STARTED:
                     raise ValidationError(f"Task '{self.task_id}' can only start once.")
                 self.status = TaskStatus.STARTED
             elif event.directive == EventDirective.COMPLETE:
+                if self.status == TaskStatus.COMPLETED:
+                    raise ValidationError(f"Task '{self.task_id}' can only close once.")
+                if self.status == TaskStatus.NOT_STARTED:
+                    raise ValidationError(f"Task '{self.task_id}' must be started before it can be closed.")
                 self.status = TaskStatus.COMPLETED
                 self.percent_complete = 100
             elif event.directive == EventDirective.PROGRESS:
@@ -90,14 +115,14 @@ class TaskState:
                     raise ParseError(f"Log entry: '{event}' not correct syntax")
                 if any(char in event.info for char in ("+", "-")):
                     result = self.percent_complete + value
-                    if result > 100 or result < 0:
-                        raise ValidationError(f"Log entry: '{event}' results in out of bounds percentage")
                     self.percent_complete = result
                 else:
                     self.percent_complete = value
 
                 if self.percent_complete >= 0:
                     self.status = TaskStatus.IN_PROGRESS
+                if self.percent_complete > 100 or self.percent_complete < 0:
+                    raise ValidationError(f"Log entry: '{event}' results in out of bounds percentage")
 
     def __str__(self):
         return f"{self.task_id} Status: {self.status.value}\n\tProgress: {self.percent_complete}%"

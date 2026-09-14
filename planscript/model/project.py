@@ -27,6 +27,7 @@ class Project:
 
     metadata: dict = field(default_factory=dict)
 
+
     def add_task(self, task: Task) -> None:
         if task.number in self.tasks:
             raise ValueError(f"Task with number '{task.number}' already exists in the project.")
