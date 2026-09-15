@@ -90,14 +90,21 @@ class Tracker:
         }
         return actual_dates
 
-    def actual_duration(self, task_id):
+    def actual_duration(self, task_id, current_date=None):
         start = self.actual_start(task_id)
         finish = self.actual_finish(task_id)
 
-        if start is None or finish is None:
+        if start is None:
             return None
         
-        return finish - start + timedelta(days=1)
+        #complete project
+        if finish is not None:
+            return finish - start + timedelta(days=1)
+
+        if current_date is None:
+            current_date = date.today()
+        #elapsed duration
+        return current_date - start + timedelta(days=1)
 
     def add_event(self, tracking_event: TrackingEvent):
         if tracking_event in self.events:

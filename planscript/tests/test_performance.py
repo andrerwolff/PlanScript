@@ -1,6 +1,6 @@
 import unittest
 import textwrap
-from datetime import date
+from datetime import date, timedelta
 
 from planscript.cli.exceptions import   ValidationError, ParseError
 from planscript.engine.scheduler import Scheduler
@@ -460,3 +460,40 @@ class ValidatePerformance(unittest.TestCase):
         self.assertIsNone(project.start_variance("4.1"))
         self.assertIsNone(project.finish_variance("4.1"))
 
+    def test_actual_duration_incomplete_uses_current_date(self):
+        plan = textwrap.dedent("""\
+            project: Test Project
+                start: 2026-10-01
+
+            task 1 Task 1 5d
+
+            ;Tracking
+            2026-10-01 1 start
+        """)
+
+        project = self.parser.parse(plan)
+        project.schedule = Scheduler().calculate(project)
+
+        duration = project.tracker.actual_duration("1", date(2026, 10, 4))
+
+        self.assertEqual(duration, timedelta(days=4))
+
+
+    def test_actual_duration_complete_uses_finish_date(self):
+        plan = textwrap.dedent("""\
+            project: Test Project
+                start: 2026-10-01
+
+            task 1 Task 1 5d
+
+            ;Tracking
+            2026-10-01 1 start
+            2026-10-05 1 complete
+        """)
+
+        project = self.parser.parse(plan)
+        project.schedule = Scheduler().calculate(project)
+
+        duration = project.tracker.actual_duration("1", date(2026, 10, 10))
+
+        self.assertEqual(duration, timedelta(days=5))
