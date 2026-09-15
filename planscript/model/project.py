@@ -1,8 +1,18 @@
+"""Core project model for PlanScript.
+
+The Project is the central domain object representing a PlanScript project.
+It owns the project's tasks, dependencies, calendar definitions, schedule,
+tracking history, and metadata.
+
+Project is responsible for maintaining basic model integrity and validating
+relationships between its components. Scheduling, tracking, and analysis
+logic are implemented by their respective engine classes.
+"""
+
 from dataclasses import dataclass, field
-from datetime import timedelta, date, datetime
+from datetime import timedelta, date
 
 from planscript.cli.exceptions import ValidationError
-from planscript.model import dependency
 from planscript.model.calendar import Calendar
 from planscript.model.dependency import Dependency, DependencyType
 from planscript.model.task import Task
@@ -11,10 +21,34 @@ from planscript.engine.tracker import Tracker
 from planscript.engine.scheduler import Schedule
 
 
-
-
 @dataclass
 class Project:
+    """The complete in-memory representation of a PlanScript project.
+
+    Project is the aggregate root for the project model. Tasks and
+    dependencies are owned by the project, while scheduling and tracking
+    state are represented by their respective engine objects.
+
+    A Project may exist without a calculated schedule or tracking history.
+    Schedule data is derived from the project plan, while tracking history
+    is part of the project's recorded state.
+
+    Validation is performed by the project after parsing or after direct
+    model modifications to ensure that the project's tasks, hierarchy,
+    dependencies, durations, dates, and tracking references are consistent.
+
+    Attributes:
+        name: Project name.
+        start_date: Optional planned project start date.
+        finish_date: Optional planned project finish date.
+        tasks: Tasks keyed by their PlanScript task number.
+        dependencies: Dependency relationships between tasks.
+        calendar: Calendar definitions available to the project.
+        schedule: Calculated schedule, if one has been generated.
+        tracker: Tracking history and derived task states.
+        metadata: Additional project-level metadata.
+    """
+
     name: str
 
     start_date: date | None = None
@@ -22,42 +56,21 @@ class Project:
 
     tasks: dict[str, Task] = field(default_factory=dict)
     dependencies: list[Dependency] = field(default_factory=list)
-    calendar: dict[str, Calendar] = field(default_factory=dict)
+    calendars: dict[str, Calendar] = field(default_factory=dict)
 
     schedule: Schedule | None = None
     tracker: Tracker = field(default_factory=Tracker)
 
     metadata: dict = field(default_factory=dict)
 
-    # TODO eventually separate into own Performance class
-    def start_variance(self, task_id):
-        actual = self.tracker.actual_start(task_id)
-        if actual is None:
-            return None
-        return actual - self.schedule.start_dates[task_id]
-    
-    def finish_variance(self, task_id):
-        actual = self.tracker.actual_finish(task_id)
-        if actual is None:
-            return None
-        return  actual - self.schedule.finish_dates[task_id]
-
-    def duration_variance(self, task_id):
-        
-        planned = self.tasks[task_id].duration
-        if planned == timedelta(0):
-            return timedelta(0)
-        elif planned == None:
-            planned = self.schedule.finish_dates[task_id] - self.schedule.start_dates[task_id] + timedelta(days=1)
-
-        actual = self.tracker.actual_duration(task_id)
-
-        if actual is None:
-            return None
-
-        return actual - planned
 
     def add_task(self, task: Task) -> None:
+        """Add a task to the project.
+
+        Raises:
+            ValueError: If another task already uses the task number.
+        """
+
         if task.number in self.tasks:
             raise ValueError(f"Task with number '{task.number}' already exists in the project.")
 
@@ -65,6 +78,15 @@ class Project:
         self.sort_tasks()
 
     def remove_task(self, task_number: str) -> None:
+        """Remove a task and all dependencies involving it.
+
+        Args:
+            task_number: Number of the task to remove.
+
+        Raises:
+            ValueError: If the task does not exist.
+        """
+
         if task_number not in self.tasks:
             raise ValueError(f"Task with number '{task_number}' does not exist in the project.")
  # Remove related dependencies
@@ -84,6 +106,21 @@ class Project:
         self.sort_tasks()
 
     def renumber_task(self, old_number: str, new_number: str) -> None:
+        """Change a task's number.
+
+        The Task object itself is retained; only its project key and task
+        number are changed.
+
+        Args:
+            old_number: Existing task number.
+            new_number: New task number.
+
+        Raises:
+            ValueError: If the old task does not exist or the new number
+                is already in use.
+        """
+        # Task numbers are user-facing identifiers and may be changed.
+        # Relationships stored as Task objects remain attached to the task.
         if old_number not in self.tasks:
             raise ValueError(f"Task with number '{old_number}' does not exist in the project.")
         if new_number in self.tasks:
@@ -94,14 +131,25 @@ class Project:
         self.tasks[new_number] = task
         self.sort_tasks()
 
-    def sort_tasks(self):
+    def sort_tasks(self) -> None:
+        """Keep tasks ordered by PlanScript task number."""
+
         self.tasks = dict(sorted(self.tasks.items(), key=lambda item: item[0]))
         #print(f"Tasks in project '{self.name}' sorted by task number.")
 
-    def list_tasks(self):
+    def list_tasks(self) -> list[Task]:
         return list(self.tasks.values())
 
     def add_dependency(self, predecessor: Task, successor: Task, dep_type: DependencyType = DependencyType.FINISH_START, lag: timedelta = timedelta(days=0), lag_unit: str = "d") -> None:
+        """Add a dependency between two project tasks.
+
+        Dependencies default to Finish-to-Start with zero lag.
+
+        Raises:
+            ValueError: If either task is not in the project or if a task
+                is made dependent on itself.
+        """
+
         if predecessor not in self.tasks.values():
             raise ValueError(f"Predecessor task with number '{predecessor}' does not exist in the project.")
         if successor not in self.tasks.values():
@@ -117,6 +165,12 @@ class Project:
         #print(f"Dependency added: {dependency}")
 
     def remove_dependency(self, dependency: Dependency) -> None:
+        """Remove an existing dependency from the project.
+
+        Raises:
+            ValueError: If the dependency is not present.
+        """
+
         if dependency not in self.dependencies:
             raise ValueError("Dependency does not exist in the project.")
 
@@ -126,67 +180,70 @@ class Project:
         except ValueError:
             print(f"No dependency found from '{dependency.predecessor}' to '{dependency.successor}' in project '{self.name}'.")
 
-    def get_predecessors(self, task: Task):
+    def get_predecessors(self, task: Task) -> list[Task]:
+        """Return the tasks that directly precede the given task."""
+
         predecessors = []
         for dependency in self.dependencies:
             if dependency.successor == task:
                 predecessors.append(dependency.predecessor)
         return predecessors
 
-    def get_successors(self, task: Task):
+    def get_successors(self, task: Task) -> list[Task]:
+        """Return the tasks that directly follow the given task."""
+
         successors = []
         for dependency in self.dependencies:
             if dependency.predecessor == task:
                 successors.append(dependency.successor)
         return successors
 
-    def get_incoming_dependencies(self, task:Task):
+    def get_incoming_dependencies(self, task:Task) -> list[Dependency]:
+        """Return dependency objects entering the given task."""
+
         incoming_dependencies = []
         for dependency in self.dependencies:
             if dependency.successor == task:
                 incoming_dependencies.append(dependency)
         return incoming_dependencies
 
-    def get_outgoing_dependencies(self, task:Task):
+    def get_outgoing_dependencies(self, task:Task) -> list[Dependency]:
+        """Return dependency objects leaving the given task."""
+
         outgoing_dependencies = []
         for dependency in self.dependencies:
             if dependency.predecessor == task:
                 outgoing_dependencies.append(dependency)
         return outgoing_dependencies
 
-    def validate(self):
-        # TODO build this include hierarchy validation (parser, scheduler, project)
+    def validate(self) -> None:
+        """Validate the internal consistency of the project.
+
+        Validation covers project dates, task hierarchy, summary-task rules,
+        dependencies, task durations, and tracking references.
+
+        Validation raises ValidationError on the first detected violation.
+        """
+
         hierarchy = TaskHierarchy(self.tasks)
         
         self._validate_dates()
-        #self._validate_task_ids()
         self._validate_summaries(hierarchy)
         self._validate_dependencies(hierarchy)
         self._validate_task_durations()
         self._validate_tracker()
 
-    def _validate_dates(self):
+    def _validate_dates(self) -> None:
+        """Validate project-level date constraints."""
+
         if (
             self.start_date is not None
             and self.finish_date is not None                
             and self.start_date > self.finish_date):
             raise ValidationError("Project start date cannot be after finish date.")
 
-    #Not enforced
-    def _validate_task_ids(self):
-        for task_id in self.tasks:
-            parts = task_id.split(".")
-
-            for index in range(1, len(parts)):
-                parent_id = ".".join(parts[:index])
-
-                if parent_id not in self.tasks:
-                    raise ValidationError(
-                        f"Task '{task_id}' has missing parent task '{parent_id}'."
-                    )
-
-
-    def _validate_summaries(self, hierarchy):
+    def _validate_summaries(self, hierarchy) -> None:
+        """Validate duration rules for summary and leaf tasks."""
 
         for task_id, task in self.tasks.items():
             if hierarchy.has_children(task_id):
@@ -195,7 +252,8 @@ class Project:
             elif task.duration is None:
                 raise ValidationError(f"Task '{task_id}' must have a duration.")
 
-    def _validate_dependencies(self, hierarchy):
+    def _validate_dependencies(self, hierarchy) -> None:
+        """Validate that dependencies reference valid non-summary tasks."""
 
         for dependency in self.dependencies:
             predecessor_id = dependency.predecessor.number
@@ -206,7 +264,9 @@ class Project:
             if hierarchy.is_summary(successor_id):
                 raise ValidationError(f"Task '{successor_id}' is a 'Summary Task' and cannot be a succcessor.")
 
-    def _validate_task_durations(self):
+    def _validate_task_durations(self) -> None:
+        """Validate that defined task durations are non-negative."""
+
         for task_id, task in self.tasks.items():
             if task.duration is None:
                 continue
@@ -214,6 +274,8 @@ class Project:
             if task.duration.total_seconds() < 0:
                 raise ValidationError(f"Task '{task_id}' cannot have a negative duration.")
 
-    def _validate_tracker(self):
+    def _validate_tracker(self) -> None:
+        """Validate that tracked task references still exist in the project."""
+
         for task_id in self.tasks:
             self.tracker.get_task_state(task_id)

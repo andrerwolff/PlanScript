@@ -1,23 +1,58 @@
+"""CPM scheduler for PlanScript projects.
+
+Scheduler calculates a project's dependency-based schedule using a forward
+pass and backward pass. It derives early and late dates, total float,
+critical tasks, critical paths, and calendar dates.
+
+Summary tasks are excluded from CPM calculations and receive derived dates
+based on their descendant tasks.
+"""
+
 from datetime import timedelta, date
 from dataclasses import dataclass
 
 from planscript.model.schedule import Schedule
 from planscript.model.hierarchy import TaskHierarchy
-from planscript.model.dependency import DependencyType
+from planscript.model.dependency import DependencyType, DependencyGraph
 from collections import deque
 
 
 class Scheduler:
+    """Calculate a CPM schedule from a PlanScript project.
+
+    Scheduler operates on the project's plan and produces a Schedule
+    containing derived scheduling results. It does not modify the project's
+    tasks, dependencies, or tracking history.
+
+    Scheduling is performed in dependency order. Summary tasks are structural
+    groupings and do not participate directly in CPM calculations.
+    """
     
-    def calculate(self, project):
+    def calculate(self, project) -> Schedule:
+        """Calculate and return a schedule for the project.
+
+        Scheduling proceeds through these stages:
+
+        1. Build the task hierarchy.
+        2. Topologically order tasks by dependency relationships.
+        3. Perform the CPM forward pass.
+        4. Perform the CPM backward pass.
+        5. Calculate total float.
+        6. Identify critical tasks and critical paths.
+        7. Convert CPM offsets to calendar dates.
+
+        Raises:
+            ValueError: If the project contains a circular dependency.
+        """
+        graph = DependencyGraph(project)
         hierarchy = TaskHierarchy(project.tasks)
-        ordered_task_ids = self._topological_sort(project)
-        early_start, early_finish = self._forward_pass(project, ordered_task_ids)
-        late_start, late_finish, duration = self._backward_pass(project, ordered_task_ids, early_finish)
-        total_float = self._float(early_start, late_start)
+        ordered_task_ids = graph.topological_sort()
+        early_start, early_finish = self._forward_pass(project, graph, ordered_task_ids)
+        late_start, late_finish, duration = self._backward_pass(project, graph, ordered_task_ids, early_finish)
+        total_float = self._float(hierarchy, early_start, late_start)
         critical_tasks = self._critical_tasks(total_float)
         critical_paths = self._find_critical_paths(project, critical_tasks)
-        start_dates, finish_dates = self._get_dates(project, early_start, early_finish)
+        start_dates, finish_dates = self._get_dates(project, hierarchy, ordered_task_ids, early_start, early_finish)
 
         return Schedule(hierarchy = hierarchy,
             ordered_task_ids = ordered_task_ids,
@@ -32,44 +67,27 @@ class Scheduler:
             start_dates= start_dates,
             finish_dates= finish_dates)
 
-    def _topological_sort(self, project):
-        ordered_task_ids = []
-        dependency_count = {}
 
-        for task_id, task in project.tasks.items():
-            dependency_count[task_id] = len(project.get_predecessors(task))
+    def _forward_pass(self, project, graph, ordered_task_ids) -> tuple[dict[str, timedelta], dict[str, timedelta]]:
+        """Calculate earliest start and finish times using CPM.
 
-        queue = deque()
+        Tasks are processed in dependency order. Each task's earliest start
+        is determined by the constraints imposed by its predecessor
+        dependencies. Summary tasks are excluded because their dates are
+        derived from descendants after CPM calculations.
 
-        for task_id, count in dependency_count.items():
-             if count == 0:
-                queue.append(task_id)
+        Supports Finish-to-Start, Start-to-Start, Finish-to-Finish, and
+        Start-to-Finish dependencies with optional lag.
+        """
 
-        while queue:
-             task_id = queue.popleft()
-             ordered_task_ids.append(task_id)
-
-             for dependent_id, dependent in project.tasks.items():
-                if project.tasks[task_id] in project.get_predecessors(dependent):
-                    dependency_count[dependent_id] -= 1
-
-                    if dependency_count[dependent_id] == 0:
-                        queue.append(dependent_id)
-
-        if len(ordered_task_ids) != len(project.tasks):
-            raise ValueError("Circular dependency detected")
-        return ordered_task_ids
-
-    def _forward_pass(self, project, ordered_task_ids):
         early_start = {}
         early_finish = {}
-        fp_rollup = {}
         for task_id in ordered_task_ids:
             task = project.tasks[task_id]
-            #pass on summary tasks
+
             if task.duration is None:
                 continue
-            dependencies = project.get_incoming_dependencies(task)
+            dependencies = graph.predecessors[task_id]
 
             if not dependencies:
                 early_start[task_id] = timedelta(0)
@@ -97,7 +115,7 @@ class Scheduler:
                         raise ValueError("Looks like an issue with dependency type - Forward Pass")
 
                     candidate_es_values.append(candidate_es)
-                #early_start[task_id] = max(timedelta(0), max(candidate_es_values)) for clamp to 0
+        
                 early_start[task_id] = max(candidate_es_values)
 
             if task.duration is not None:
@@ -105,7 +123,18 @@ class Scheduler:
 
         return early_start, early_finish
 
-    def _backward_pass(self, project, ordered_task_ids, early_finish):
+    def _backward_pass(self, project, graph, ordered_task_ids, early_finish) -> tuple[dict[str, timedelta], dict[str, timedelta], timedelta,]:
+        """Calculate latest start and finish times using CPM.
+
+        Tasks are processed in reverse dependency order. The project
+        duration from the forward pass establishes the initial latest
+        finish constraint, and successor dependencies propagate allowable
+        dates backward through the network.
+
+        Summary tasks are excluded because their dates are derived from
+        descendants after CPM calculations.
+        """
+
         project_duration = max(early_finish.values())
         late_start = {}
         late_finish = {}
@@ -115,7 +144,7 @@ class Scheduler:
             if task.duration is None:
                 continue
             #----------------------------
-            dependencies = project.get_outgoing_dependencies(task)
+            dependencies = graph.successors[task_id]
             candidate_lf_values = [project_duration]
             for dependency in dependencies:
                 successor = dependency.successor
@@ -146,21 +175,40 @@ class Scheduler:
 
         return late_start, late_finish, project_duration
 
-    def _float(self, early_start, late_start):
+    def _float(self, hierarchy, early_start, late_start) -> dict[str, timedelta | None]:
+        """Calculate total float from early and late start times.
+
+        Summary tasks receive no CPM float because they do not participate
+        directly in the CPM calculation.
+        """
+
         total_float = {}
 
-        for task_id in early_start:
-            total_float[task_id] = late_start[task_id] - early_start[task_id]
+        for task_id in hierarchy.tasks:
+            if hierarchy.is_summary(task_id):
+                total_float[task_id] = None
+            else:
+                total_float[task_id] = late_start[task_id] - early_start[task_id]
         return total_float
 
-    def _critical_tasks(self, total_float):
+    def _critical_tasks(self, total_float: dict[str, timedelta | None]) -> list[str]:
+        """Return tasks with zero total float."""
+
         critical_tasks = []
         for task_id in total_float:
             if total_float[task_id] == timedelta(0):
                 critical_tasks.append(task_id)
         return critical_tasks
 
-    def _find_critical_paths(self, project, critical_tasks):
+    def _find_critical_paths(self, project, critical_tasks) -> list[list[str]]:
+        """Find complete paths through the critical-task network.
+
+        A critical path begins with a critical task that has no critical
+        predecessor and ends with a critical task that has no critical
+        successor. Branching in the critical network may produce multiple
+        critical paths.
+        """
+
         critical = set(critical_tasks)
 
         paths = []
@@ -203,8 +251,17 @@ class Scheduler:
 
         return paths
 
-    def _get_dates(self, project, early_start, early_finish):
+    def _get_dates(self, project, hierarchy, ordered_task_ids, early_start, early_finish) -> tuple[dict[str, date], dict[str, date]]:
+        """Convert CPM offsets into calendar start and finish dates.
+
+        Task offsets are measured from the project's planned start date. If no
+        project start date is defined, a default calendar date is used.
+
+        Summary-task dates are rolled up from the dates of their descendants.
+        """
+
         if project.start_date is None:
+            # TODO raise validation error and force user to enter date to schedule dates
             start_date = date(2026,1,1)
         else:   
             start_date = project.start_date
@@ -218,4 +275,26 @@ class Scheduler:
             if finish < start_date:
                     finish = start_date
             finish_dates[task_id] = finish
+
+        start_dates, finish_dates = self._rollup_summary_dates(hierarchy, ordered_task_ids, start_dates, finish_dates)
         return start_dates, finish_dates
+
+    def _rollup_summary_dates(self, hierarchy, ordered_task_ids, start_dates, finish_dates) -> tuple[dict[str, date], dict[str, date]]:
+        """Derive summary-task dates from their descendant task dates.
+
+        A summary task starts on the earliest start date of its descendants
+        and finishes on the latest finish date of its descendants.
+        """
+
+        for task_id in reversed(ordered_task_ids):
+            if hierarchy.is_summary(task_id):
+                decendant_starts = []
+                decendant_finishes = []
+                for child in hierarchy.get_descendants(task_id):
+                    decendant_starts.append(start_dates[child])
+                    decendant_finishes.append(finish_dates[child])
+
+                start_dates[task_id] = min(decendant_starts)
+                finish_dates[task_id] = max(decendant_finishes)
+        return start_dates, finish_dates
+    

@@ -236,10 +236,11 @@ def view_schedule_scheduled(project):
         task = project.tasks[task_id]
         start = schedule.start_dates[task_id]
         end = schedule.finish_dates[task_id]
-        if schedule.total_float[task_id] == "-":
+        total_float = schedule.total_float[task_id]
+        if total_float is None:
             f = "-"
         else:
-            f = schedule.total_float[task_id].days
+            f = total_float.days
 
         print(f" {tree[task_id]:<{c1+1}} {task.name:<25} {start.strftime('%#m/%#d/%y'):^10} {end.strftime('%#m/%#d/%y'):^10} {f:^7} ")
     print(f"-"* 69)

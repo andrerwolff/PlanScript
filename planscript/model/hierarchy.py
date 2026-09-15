@@ -1,15 +1,31 @@
 class TaskHierarchy:
+    """Represent the parent-child hierarchy of a set of PlanScript tasks.
+
+    Hierarchy is derived from the structure of task numbers. For example,
+    task ``1.2.3`` has ``1.2`` as its parent when that task exists.
+
+    If an implied parent task does not exist, the task is treated as a root.
+    This allows projects to use hierarchical numbering without requiring
+    placeholder tasks for every hierarchy level.
+
+    The hierarchy is distinct from the project's dependency graph.
+    """
+
     def __init__(self, tasks):
-        self.tasks = tasks
+        """Build a hierarchy from the project's task identifiers."""
+
+        self.tasks = dict(tasks)
 
         self.parents = {}
         self.children = {}
         for task_id in tasks:
             self.children[task_id]=[]
     
-        self.build()
+        self._build()
 
-    def build(self):
+    def _build(self) -> None:
+        """Rebuild parent and child relationships from the current tasks."""
+
         self.parents = {}
         self.children = {}
         for task_id in self.tasks:
@@ -33,13 +49,19 @@ class TaskHierarchy:
                 # TODO Parse error for implied parent not existing 
                 self.parents[task_id] = None
 
-    def get_parent(self, task_id):
+    def get_parent(self, task_id: str) -> str | None:
+        """Return the immediate parent task ID, or None for a root task."""
+
         return self.parents.get(task_id)
 
-    def get_children(self, task_id):
+    def get_children(self, task_id: str) -> list[str]:
+        """Return the immediate child task IDs."""
+
         return self.children.get(task_id, [])
 
-    def get_roots(self):
+    def get_roots(self) -> list[str]:
+        """Return task IDs that have no parent in the hierarchy."""
+        
         roots = []
         for task_id, parent_id in self.parents.items():
             if parent_id is None:
@@ -58,13 +80,19 @@ class TaskHierarchy:
 
         return leaves
 
-    def has_children(self, task_id):
+    def has_children(self, task_id: str) -> bool:
+        """Return True if the task has one or more immediate children."""
+
         return bool(self.children.get(task_id))
 
-    def is_summary(self, task_id):
+    def is_summary(self, task_id: str) -> bool:
+        """Return True if the task has one or more children."""
+
         return self.has_children(task_id)
 
-    def get_descendants(self, task_id):
+    def get_descendants(self, task_id: str) -> list[str]:
+        """Return all descendants of a task in depth-first order."""
+
         descendants = []
 
         for child_id in self.get_children(task_id):
@@ -75,13 +103,16 @@ class TaskHierarchy:
 
         return descendants
 
-    def get_tree(self):
+    def get_tree(self) -> dict[str, str]:
+        """Return a display-oriented tree of the project's task hierarchy."""
+
         tree = {}
         for root_id in self.get_roots():
             self._add_to_tree(root_id, tree, 0)
         return tree
 
-    def _add_to_tree(self, task_id, tree, level):
+    def _add_to_tree(self, task_id: str, tree: dict[str, str], level: int) -> None:
+        """Add a task and its descendants to a display tree."""
         tree[task_id] = (" "*level+task_id)
         level += 1
         children = self.get_children(task_id)

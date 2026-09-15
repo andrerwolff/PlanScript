@@ -123,8 +123,8 @@ class TestTaskHierarchy(unittest.TestCase):
         )
 
     def test_rebuild_does_not_duplicate_children(self):
-        self.hierarchy.build()
-        self.hierarchy.build()
+        self.hierarchy._build()
+        self.hierarchy._build()
 
         self.assertEqual(
             self.hierarchy.get_children("1"),
