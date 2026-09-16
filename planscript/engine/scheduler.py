@@ -117,9 +117,7 @@ class Scheduler:
                     candidate_es_values.append(candidate_es)
         
                 early_start[task_id] = max(candidate_es_values)
-
-            if task.duration is not None:
-                early_finish[task_id] = (early_start[task_id] + task.duration)
+            early_finish[task_id] = (early_start[task_id] + task.duration)
 
         return early_start, early_finish
 
@@ -268,13 +266,14 @@ class Scheduler:
         start_dates = {}
         finish_dates = {}
         for task_id in early_start:
+            task = project.tasks[task_id]
             start = start_date + early_start[task_id]
             start_dates[task_id] = start
-        for task_id in early_finish:
-            finish = start_date + timedelta(early_finish[task_id].days -1)
-            if finish < start_date:
-                    finish = start_date
-            finish_dates[task_id] = finish
+
+            if task.is_milestone:
+                finish_dates[task_id] = start
+            else:
+                finish_dates[task_id] = (start_date + early_finish[task_id] - timedelta(days=1))
 
         start_dates, finish_dates = self._rollup_summary_dates(hierarchy, ordered_task_ids, start_dates, finish_dates)
         return start_dates, finish_dates

@@ -14,7 +14,7 @@ def render(project):
     for task_id in schedule.hierarchy.get_tree():
         if schedule.hierarchy.is_summary(task_id):
             offset = int(((schedule.start_dates[task_id] - project.start_date).days)/factor)
-            length = int(((schedule.finish_dates[task_id] - schedule.start_dates[task_id]).days)/factor)
+            length = int(((schedule.finish_dates[task_id] - schedule.start_dates[task_id]).days+1)/factor)
         else:
             offset = int(schedule.early_start[task_id].days/factor)
             length = int(project.tasks[task_id].duration.days/factor)

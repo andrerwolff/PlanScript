@@ -29,7 +29,11 @@ def main_menu():
         elif choice == "o":
             choice2 = input("Select test project: ")
             if choice2 == "f":
-                file = Path("examples/simple copy.plan")
+                choice3 = input("Select test project number: ")
+                if choice3 == "1":
+                    file = Path("examples/Full_Plan.plan")
+                elif choice3 == "2":
+                    file = Path("examples/Simple_Plan.plan")
                 text = file.read_text(encoding="utf-8")
                 parser = Parser()
                 try:

@@ -80,6 +80,14 @@ class TaskHierarchy:
 
         return leaves
 
+    def get_leaf_ids(self) -> list[str]:
+        leaf_ids = []
+        for task_id in self.tasks:
+            if not self.has_children(task_id):
+                leaf_ids.append(task_id)
+        return leaf_ids
+
+
     def has_children(self, task_id: str) -> bool:
         """Return True if the task has one or more immediate children."""
 

@@ -8,7 +8,15 @@ Analysis is derived information and does not modify the project, schedule,
 or tracking history.
 """
 
-from datetime import timedelta
+from datetime import timedelta, date
+from dataclasses import dataclass
+
+
+@dataclass
+class TaskVariance:
+    start: timedelta | None
+    finish: timedelta | None
+    duration: timedelta | None
 
 class Analyzer:
     """Calculate variances between planned and actual task performance.
@@ -73,3 +81,43 @@ class Analyzer:
             return None
 
         return actual - planned
+
+    def task_variance(self, task_id):
+        return TaskVariance(
+            start = self.start_variance(task_id),
+            finish = self.finish_variance(task_id),
+            duration = self.duration_variance(task_id)
+        )
+
+    def project_actual_start(self) -> date | None:
+        actual_starts = []
+        for task_id in self.project.tasks:
+            start = self.project.tracker.actual_start(task_id)
+            if start:
+                actual_starts.append(start)
+        if actual_starts:
+            return min(actual_starts)
+        return None
+
+    def project_progress(self) -> float | None:
+        num = 0
+        denom = 0
+        for task_id in self.project.tasks:
+            if self.project.schedule.hierarchy.is_summary(task_id):
+                continue
+            task = self.project.tasks[task_id]
+            state = self.project.tracker.get_task_state(task_id)
+
+            if task.duration is None:
+                continue
+
+            duration = task.duration.total_seconds()
+
+            if duration <= 0:
+                continue
+
+            num += duration * (state.percent_complete) 
+            denom += duration
+        if denom:
+            return num/denom
+        return None
