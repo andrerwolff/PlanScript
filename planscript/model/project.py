@@ -12,7 +12,7 @@ logic are implemented by their respective engine classes.
 from dataclasses import dataclass, field
 from datetime import timedelta, date
 
-from planscript.cli.exceptions import ValidationError
+from planscript.exceptions import ValidationError
 from planscript.model.calendar import Calendar
 from planscript.model.dependency import Dependency, DependencyType
 from planscript.model.task import Task

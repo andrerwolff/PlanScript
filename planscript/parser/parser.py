@@ -2,7 +2,7 @@ import re
 from datetime import timedelta, date
 from dataclasses import dataclass
 
-from planscript.cli.exceptions import ParseError, ValidationError
+from planscript.exceptions import ParseError, ValidationError
 from planscript.model.project import Project
 from planscript.model.task import Task
 from planscript.model.dependency import Dependency

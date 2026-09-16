@@ -1,7 +1,7 @@
 import unittest
 import textwrap
 
-from planscript.cli.exceptions import   ValidationError, ParseError
+from planscript.exceptions import   ValidationError, ParseError
 from planscript.engine.tracker import   TrackingEvent, Tracker, EventDirective, TaskStatus
 from planscript.parser.parser import Parser
 

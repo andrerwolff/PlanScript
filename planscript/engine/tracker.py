@@ -1,18 +1,32 @@
+"""Tracking models and derived actuals for PlanScript projects.
+
+Tracking records dated events against project tasks. Tracker provides access
+to tracking history and derives actual task dates and durations. TaskState
+derives the current tracking status and percent complete from a task's events.
+
+Tracking data is authoritative history; status, progress, and actual schedule
+values are derived from that history.
+"""
+
 from operator import attrgetter
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from enum import Enum
 
-from planscript.cli.exceptions import ValidationError, ParseError
+from planscript.exceptions import ValidationError, ParseError
 from planscript.model.hierarchy import TaskHierarchy
 
 class EventDirective(Enum):
+    """Supported tracking events recorded against a task."""
+
     START = "start"
     PROGRESS = "progress"
     COMPLETE = "complete"
     NOTE = "note"
 
 class TaskStatus(Enum):
+    """Derived status of a task based on its tracking events."""
+
     NOT_STARTED = "Not Started"
     STARTED = "Started"
     IN_PROGRESS = "In Progress"
@@ -20,10 +34,22 @@ class TaskStatus(Enum):
 
 @dataclass
 class TrackingEvent:
+    """A dated tracking event recorded against a project task.
+
+    Tracking events form the authoritative tracking history from which
+    task status, progress, and actual schedule values are derived.
+
+    Attributes:
+        date: Date on which the event occurred.
+        task_id: ID of the task affected by the event.
+        directive: Type of tracking event.
+        info: Event-specific information, such as a progress value or note.
+    """
+
     date: date
     task_id: str
     directive: EventDirective
-    info: str
+    info: str | None
 
     def __str__(self):
         info = self.info
@@ -34,10 +60,27 @@ class TrackingEvent:
 
 @dataclass
 class Tracker:
+    """Manage tracking history and derive actual task performance.
+
+    Tracker stores TrackingEvent records and derives task-level actual
+    starts, finishes, durations, and current states from those events.
+
+    The tracker does not modify the project's planned task data.
+    """
+
     hierarchy: TaskHierarchy | None = None
     events: list[TrackingEvent] = field(default_factory=list)
 
     def actual_start(self, task_id):
+        """Return the actual start date for a task.
+
+        For leaf tasks, the date comes from the task's start event. For summary
+        tasks, the date is derived as the earliest actual start among descendants.
+
+        Returns:
+            The actual start date, or None if the task has not started.
+        """
+
         if self.hierarchy is None:
             raise ValidationError(f"Hierarchy not working")
         
@@ -59,6 +102,16 @@ class Tracker:
         return None
 
     def actual_finish(self, task_id):
+        """Return the actual finish date for a task.
+
+        For leaf tasks, the date comes from the task's completion event. For
+        summary tasks, the date is derived as the latest actual finish among
+        descendants.
+
+        Returns:
+            The actual finish date, or None if the task is not completely finished.
+        """
+
         if self.hierarchy is None:
             raise ValidationError(f"Hierarchy not working")
 
@@ -91,6 +144,15 @@ class Tracker:
         return actual_dates
 
     def actual_duration(self, task_id, current_date=None):
+        """Return the actual or elapsed duration of a task.
+
+        A completed task uses its actual start and finish dates. An active task
+        uses its actual start and the supplied current date, or today's date when
+        no current date is supplied.
+
+        Durations are inclusive of both the start and end dates.
+        """
+
         start = self.actual_start(task_id)
         finish = self.actual_finish(task_id)
 
@@ -107,6 +169,7 @@ class Tracker:
         return current_date - start + timedelta(days=1)
 
     def add_event(self, tracking_event: TrackingEvent):
+
         if tracking_event in self.events:
             raise ValidationError(f"Event '{tracking_event}' already exists in the project.")
         
@@ -136,11 +199,23 @@ class Tracker:
 
 @dataclass
 class TaskState:
+    """Derived current tracking state for a task.
+
+    TaskState is reconstructed from the task's tracking events rather than
+    stored as independent authoritative data.
+    """
+
     task_id: str
     status: TaskStatus = TaskStatus.NOT_STARTED
     percent_complete: float = 0
 
     def _derive(self, task_events):
+        """Derive status and percent complete from chronological task events.
+
+        Events are applied in order. Invalid event sequences raise a validation
+        or parsing error rather than being silently corrected.
+        """
+
         for event in task_events:
             if event.directive == EventDirective.NOTE:
                 pass
