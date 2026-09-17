@@ -1,6 +1,6 @@
 from datetime import timedelta
 # TODO finish this
-def render(project):
+def render_gantt(project):
     schedule = project.schedule
     gantt_start = project.start_date
     gantt_end = gantt_start + schedule.duration
@@ -30,5 +30,4 @@ def render(project):
         print(f"{task_id:^7}| "
             f"{' '*offset}"
             f"{l_str}")
-    input("Press Enter to continue...")
-    return f"-"* 69
+    print(f"-"* 69)

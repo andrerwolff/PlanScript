@@ -1,77 +1,68 @@
 import argparse
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
-from datetime import date, timedelta
-
-
-from planscript.model import Project, Task, Dependency, DependencyType
-from planscript.model.project import ValidationError
+from planscript.model import Project
+from planscript.exceptions import ParseError, SchedulingError, ValidationError
 from planscript.cli import display
 from planscript.engine.scheduler import Scheduler
-from planscript.tests import test_projects
-from planscript.parser.parser import Parser, ParseError
-from planscript.serializer.plan_serializer import PlanSerializer
-from planscript.cli.gantt import render
+from planscript.engine.reporter import ReportBuilder
+from planscript.parser.parser import Parser
+from planscript.cli.gantt import render_gantt
 
 
-# Menus
-def main():
+def main(argv=None) -> int:
+    """Run a command, reporting expected failures on stderr with exit code 1.
+
+    Successful commands return 0. argparse handles help (0) and usage errors
+    (2). Unexpected programming errors are deliberately not caught.
+    """
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    if args.command == "check":
-        return check_command(args.file)
+    try:
+        if args.command == "check":
+            return check_command(args.file)
+        if args.command == "summary":
+            return summary_command(args.file)
+        if args.command == "schedule":
+            return schedule_command(args.file,
+                                    calculated=args.calculated,
+                                    dates=args.dates,
+                                    gantt=args.gantt)
+        if args.command == "status":
+            return status_command(args.file,
+                                  as_of=args.as_of,
+                                  look_ahead=args.look_ahead)
+    except FileNotFoundError:
+        print(f"Error: file not found: {args.file}", file=sys.stderr)
+    except UnicodeDecodeError as e:
+        print(f"Error decoding {args.file} as UTF-8: {e}", file=sys.stderr)
+    except OSError as e:
+        print(f"File error: {args.file}: {e}", file=sys.stderr)
+    except ParseError as e:
+        print(f"Parse error: {e}", file=sys.stderr)
+    except ValidationError as e:
+        print(f"Validation error: {e}", file=sys.stderr)
+    except SchedulingError as e:
+        print(f"Scheduling error: {e}", file=sys.stderr)
+    else:
+        parser.error(f"Unknown command: {args.command}")
 
-    if args.command == "summary":
-        return summary_command(args.file)
-
-    if args.command == "schedule":
-        v = "d"
-        if args.dates:
-            v = "d"
-        elif args.calculated:
-            v = "c"
-
-        return schedule_command(args.file,v)
-
-    if args.command == "status":
-        return status_command(args.file)
-
-    if args.command == "gantt":
-        return gantt_command(args.file) 
-
-    parser.error(f"Unknown command: {args.command}")
+    return 1
 
 
 def load_project(file_path: Path) -> Project:
-    """Parse and validate a PlanScript file."""
-    try:
-        text = file_path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        print(f"Error: file not found: {file_path}", file=sys.stderr)
-        return None
-    except OSError as e:
-        print(f"Error reading {file_path}: {e}", file=sys.stderr)
-        return None
+    """Parse and validate a UTF-8 file, returning a project or raising.
 
-    parser = Parser()
-
-    try:
-        return parser.parse(text)
-    except ValidationError as e:
-        print(f"Validation error: {e}", file=sys.stderr)
-    except ParseError as e:
-        print(f"Parse error: {e}", file=sys.stderr)
-
-    return None
+    This helper never prints; main handles expected failures for the CLI.
+    """
+    return Parser().parse(file_path.read_text(encoding="utf-8"))
 
 def check_command(file_path: Path) -> int:
     """Validate a PlanScript file."""
     project = load_project(file_path)
-
-    if project is None:
-        return 1
 
     print(f"Project: {project.name}")
     print("Valid")
@@ -80,42 +71,52 @@ def check_command(file_path: Path) -> int:
 def summary_command(file_path: Path) -> int:
     """Display a project summary."""
     project = load_project(file_path)
-
-    if project is None:
-        return 1
-
-    print(f"Project: {project.name}")
-    print()
-    print(f"Tasks:         {len(project.tasks)}")
-    print(f"Dependencies:  {len(project.dependencies)}")
-
-    if project.start_date:
-        print(f"Start:         {project.start_date}")
-
-    if project.finish_date:
-        print(f"Finish:        {project.finish_date}")
-
-    if project.tracker.events:
-        print(f"Tracking events: {len(project.tracker.events)}")
-    else:
-        print("Tracking:      Not started")
+    display.view_project_summary(project)
 
     return 0
 
-def schedule_command(file_path: Path, v:str) -> int:
+def schedule_command(file_path: Path, calculated:bool, dates:bool, gantt:bool) -> int:
     """Display project schedule"""
     project = load_project(file_path)
-
-    if project is None:
-            return 1
-    
     project.schedule = Scheduler().calculate(project)
-    if v == "c":
+    if not calculated and not dates and not gantt:
+        calculated = True
+        dates = True
+        gantt = True
+
+        display.view_project_header(project)
+        
+    if calculated:
         display.view_schedule_calculated(project)
-    else:
+    if dates: 
         display.view_schedule_scheduled(project)
+    if gantt:
+        render_gantt(project)
+        
+    display.view_critical_paths(project)
 
     return 0
+
+def status_command(file_path:Path, as_of:date, look_ahead:int) -> int:
+    """Display project status."""
+    project = load_project(file_path)
+    project.schedule = Scheduler().calculate(project)
+    report = ReportBuilder(project, as_of, timedelta(days=look_ahead)).build()
+    print(report.render_text())
+
+    return 0
+    
+
+def non_negative_int(value: str) -> int:
+    """Parse a non-negative CLI integer, including zero."""
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be a non-negative integer") from None
+    if number < 0:
+        raise argparse.ArgumentTypeError("must be a non-negative integer")
+    return number
+
 
 def build_parser():
     parser = argparse.ArgumentParser(
@@ -145,6 +146,7 @@ def build_parser():
         help="Calculate and display the project schedule.",
     )
     schedule.add_argument("file", type=Path)
+
     schedule.add_argument(
         "-d","--dates",
         action="store_true",
@@ -155,344 +157,26 @@ def build_parser():
         action="store_true",
         help="Display calculated schedule values."
     )
+    schedule.add_argument(
+        "-g","--gantt",
+        action="store_true",
+        help="Display the project Gantt chart."
+    )
 
     status = subparsers.add_parser(
         "status",
         help="Display current project status.",
     )
     status.add_argument("file", type=Path)
-
-    gantt = subparsers.add_parser(
-        "gantt",
-        help="Display the project Gantt chart.",
-    )
-    gantt.add_argument("file", type=Path)
+    status.add_argument(
+        "-ao","--as-of",
+        type=date.fromisoformat,
+        default=date.today(),
+        help="Date for the status report (YYYY-MM-DD). Default Today")
+    status.add_argument(
+        "-la","--look-ahead",
+        type=non_negative_int,
+        default=21,
+        help="Number of days to look ahead (0 or greater). Default 21")
 
     return parser
-
-
-def project_menu(project):
-
-    while True:
-        choice = display.show_project_menu(project)
-
-        if choice == "t":
-            task_menu(project)
-
-        elif choice == "d":
-            dependency_menu(project)
-
-        elif choice == "p":
-            # Implement project properties functionality here
-            print("Project Properties functionality is not yet implemented.")
-            pass
-
-        elif choice == "v":
-            scheduler = Scheduler()
-            try:
-                project.schedule = scheduler.calculate(project)
-            except ValueError as e:
-                print(f"Scheduling error: {e}")
-                return
-            #display.view_schedule_scheduled(project, schedule)
-            #render(project, schedule)
-            schedule_menu(project)
-
-        elif choice == "l":
-            display.render_log(project)
-
-        elif choice == "s":
-            # Implement save project functionality here
-            serializer = PlanSerializer()
-            print(serializer.serialize(project))
-            print("Save Project functionality is not yet implemented.")
-            pass
-
-        elif choice == "b":
-            #project = None  <- May need this to reset the project variable when returning to main menu
-            break
-
-        elif choice == "q":
-            print("Exiting the application.")
-            exit()
-
-def schedule_menu(project):
-    while True:
-        choice = display.show_schedule_menu(project)
-
-        if choice == "c":
-            display.view_schedule_calculated(project)
-
-        elif choice == "d":
-            display.view_schedule_scheduled(project)
-
-        elif choice == "g":
-            render(project)
-
-        elif choice == "b":
-                    break
-        
-        else:
-            print("Invalid Option t.")
-            continue
-        
-
-def task_menu(project):
-    while True:
-        choice = display.show_task_menu(project)
-
-        if choice == "n":
-            new_task(project)
-
-        elif choice == "e":
-            print("\nEDIT TASK")
-            print("-" * 50)
-            print()
-            task_to_edit = display.select_task(project, "Edit")
-            if task_to_edit:
-                edit_task_menu(project, task_to_edit)
-            else:
-                print("Invalid task index.")
-                continue
-
-        elif choice == "x":
-            print("\nDELETE TASK")
-            print("-" * 50)
-            print()
-            task_to_remove = display.select_task(project, "Delete")
-            if task_to_remove:
-                project.remove_task(task_to_remove.number)
-            else:
-                print("Task not found.")
-
-        elif choice == "b":
-            break
-
-        else:
-            print("Invalid Option t.")
-            continue
-
-def edit_task_menu(project, task):
-    while True:
-        choice = display.show_task_edit_menu(project, task)
-
-        if choice == "#":
-            new_number = input("Enter new task number: ")
-            if new_number in project.tasks:
-                print(f"Task number '{new_number}' already exists in the project. Please choose a different number.")
-                continue
-            project.renumber_task(task.number, new_number)
-            print(f"Task number updated to '{new_number}'.")
-            project.sort_tasks()  # Ensure tasks are sorted after renumbering
-            continue  # Return to the edit menu after renumbering
-            
-
-        if choice == "n":
-            new_name = input("Enter new task name: ")
-            task.name = new_name
-            print(f"Task name updated to '{new_name}'.")
-
-        elif choice == "d":
-            # Implement edit task duration functionality here
-            print("Edit Task Duration functionality is not yet implemented.")
-            pass
-
-        elif choice == "b":
-            break
-
-        else:
-            print("Invalid Option et.")
-            continue
-
-def dependency_menu(project):
-    while True:
-        choice = display.show_dependency_menu(project)
-
-        if choice == "n":
-            new_dependency(project)
-        
-        elif choice == "e":
-            print("\nEDIT DEPENDENCY")
-            print("-" * 50)
-            print()
-            dependency_to_edit = display.select_dependency(project, "Edit")
-            if dependency_to_edit:
-                edit_dependency_menu(project, dependency_to_edit)
-            else:
-                print("Invalid dependency index.")
-                continue
-
-        elif choice == "x":
-            print("\nDELETE DEPENDENCY")
-            print("-" * 50)
-            print()
-            dependency_to_remove = display.select_dependency(project, "Delete")
-            if dependency_to_remove:
-                project.remove_dependency(dependency_to_remove)
-            else:
-                print("Dependency not found.")
-
-        elif choice == "b":
-            break
-
-        else:
-            print("Invalid Option.")
-            continue
-
-def edit_dependency_menu(project, dependency):
-    while True:
-        choice = display.show_depend_edit_menu(project, dependency)
-
-        if choice == "p":
-            # TODO add check if task is the same as successor
-            new_number = input("Enter new predecessor task number: ").strip()
-            if new_number not in project.tasks:
-                print(f"Task number '{new_number}' does not exist in the project. Please choose a different number.")
-                continue
-            dependency.predecessor = project.tasks[new_number]
-            
-        if choice == "s":
-            #TODO add check if task is the same as successor
-            new_number = input("Enter new successor task number: ").strip()
-            if new_number not in project.tasks:
-                print(f"Task number '{new_number}' does not exist in the project. Please choose a different number.")
-                continue
-            dependency.successor = project.tasks[new_number]
-
-        elif choice == "t":
-            print("Edit dependency type functionality is not yet implemented.")
-            pass
-
-        elif choice == "l":
-            print("Edit dependency lag functionality is not yet implemented.")
-
-        elif choice == "b":
-            break
-
-        else:
-            print("Invalid Option et.")
-            continue    
-
-#Project Functions
-def new_project():
-    print("\nNEW PROJECT")
-    print("-" * 50)
-    print()
-    proj_name = input("Project Name: ")
-
-    create = input(f"Create project '{proj_name}'? (y/n): ").strip().lower()
-    if create != 'y':
-        print("Project creation cancelled.")
-        return None
-    project = Project(name=proj_name)
-
-    print("\nProject created!\n")
-    print(f"Project Name: {project.name}")
-    print("Location: File system (not yet implemented)")
-    print("File: (not yet implemented)")
-    print()
-    input("Press Enter to continue...")
-    return project
-
-def open_project():
-    project = Project("Test Project")
-
-    project.add_task(Task("1.1", "PM", timedelta(days=100)))
-    project.add_task(Task("2.1", "Design", timedelta(days=200)))
-    project.add_task(Task("3.1", "Construction", timedelta(days=300)))
-    project.add_task(Task("4.1", "Closeout", timedelta(days=20)))
-
-    project.add_dependency(project.tasks["2.1"], project.tasks["3.1"], lag=timedelta(days=10))
-    project.add_dependency(project.tasks["3.1"], project.tasks["4.1"])
-    project.add_dependency(project.tasks["1.1"], project.tasks["4.1"], DependencyType.FINISH_FINISH, timedelta(days=14))
-
-    return project
-
-#Task Functions
-def new_task(project):
-    print("\nNEW TASK")
-    print("-" * 50)
-    print()
-    task_number = input("Task Number: ")
-    task_name = input("Task Name: ")
-    task_duration = int(input("Duration (days): "))
-
-    predecessors = []
-    while True:
-        predecessor = input("Enter a predecessor task number (or press Enter to finish): ").strip()
-        if not predecessor:
-            break
-        if predecessor not in project.tasks:
-            print(f"Task with number '{predecessor}' does not exist in the project. Please enter a valid task number.")
-            continue
-        predecessors.append(predecessor)
-    if predecessors:
-        print(f"Predecessors: {', '.join(predecessors)}")
-
-    create = input(f"Create Task? (y/n): ").strip().lower()
-    if create != 'y':
-        print("Task creation cancelled.")
-        return None
-
-    new_task = Task(
-            number=task_number,
-            name=task_name,
-            duration=timedelta(days=task_duration),
-        )
-
-    project.add_task(new_task)
-    print(f"\nTask '{new_task.number} - {new_task.name}' added to project '{project.name}'.\n")
-
-    for predecessor in predecessors:
-        successor = new_task
-        project.add_dependency(project.tasks[predecessor], successor)
-
-
-
-#Dependency Functions
-def new_dependency(project):
-    # TODO: control for predecessor and successor being the same number
-    print("\nNEW DEPENDENCY")
-    print("-" * 50)
-    print()
-
-    predecessor_number = input("Predecessor Task Number: ").strip()
-    try:
-        predecessor = project.tasks[predecessor_number]
-    except KeyError:
-        print(f"Predecessor task with number '{predecessor_number}' does not exist in the project.")
-        return
-    successor_number = input("Successor Task Number: ").strip()
-    try:
-        successor = project.tasks[successor_number]
-    except KeyError:
-        print(f"Successor task with number '{successor_number}' does not exist in the project.")
-        return
-    
-    dep_type_input = input("Dependency Type (FS, SS, FF, SF) [default FS]: ").strip().upper()
-    dep_type = DependencyType.FINISH_START  # Default
-    if dep_type_input:
-        try:
-            dep_type = DependencyType(dep_type_input)
-        except ValueError:
-            print(f"Invalid dependency type '{dep_type_input}'. Using default 'FS'.")
-
-    lag_days_input = input("Lag (days) [default 0]: ").strip()
-    lag_days = 0
-    if lag_days_input:
-        try:
-            lag_days = int(lag_days_input)
-        except ValueError:
-            print(f"Invalid lag value '{lag_days_input}'. Using default 0.")
-
-    project.add_dependency(predecessor, successor, dep_type, timedelta(days=lag_days))
-
-def delete_dependency(project):
-    print("\nDELETE DEPENDENCY")
-    print("-" * 50)
-    print()
-   
-    if dependency_to_remove:
-        project.remove_dependency(dependency_to_remove)
-    else:
-        print("Dependency not found.")

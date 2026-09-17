@@ -14,7 +14,7 @@ from datetime import timedelta, date
 
 from planscript.exceptions import ValidationError
 from planscript.model.calendar import Calendar
-from planscript.model.dependency import Dependency, DependencyType
+from planscript.model.dependency import Dependency, DependencyType, DependencyGraph
 from planscript.model.task import Task
 from planscript.model.hierarchy import TaskHierarchy
 from planscript.engine.tracker import Tracker
@@ -263,6 +263,11 @@ class Project:
 
             if hierarchy.is_summary(successor_id):
                 raise ValidationError(f"Task '{successor_id}' is a 'Summary Task' and cannot be a succcessor.")
+
+        try:
+            DependencyGraph(self).topological_sort()
+        except ValueError as e:
+            raise ValidationError(str(e)) from e
 
     def _validate_task_durations(self) -> None:
         """Validate that defined task durations are non-negative."""

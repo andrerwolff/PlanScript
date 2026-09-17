@@ -220,17 +220,34 @@ def show_schedule_menu(project):
     
     return input("  Select an option: ").strip().lower()
     
-
-def view_schedule_calculated(project):
-    schedule = project.schedule
-    tree = schedule.hierarchy.get_tree()
+def view_project_header(project):
     print()
     print(f"    PROJECT: {project.name}")
-    print(f"    Duration: {schedule.duration}")
+    if project.schedule is not None:
+        print(f"    Duration: {project.schedule.duration}")
     print(f"    Target Start: {project.start_date}")
     print(f"    Target Finish: {project.finish_date}")
     print("~" * 69)
     print()
+
+def view_project_summary(project):
+    view_project_header(project)
+    print(f"Tasks:         {len(project.tasks)}")
+    print(f"Dependencies:  {len(project.dependencies)}")
+
+    if project.tracker.events:
+        print(f"Tracking events: {len(project.tracker.events)}")
+    else:
+        print("Tracking:      Not started")
+
+def view_critical_paths(project):
+    print("Critical Path(s):")
+    for path in project.schedule.critical_paths:
+        print(" → ".join(str(task) for task in path))
+    
+def view_schedule_calculated(project):
+    schedule = project.schedule
+    tree = schedule.hierarchy.get_tree()
     headers = ['ID','TASK','DUR','ES','EF','LS','LF','FLOAT']
     rows = []
     for task_id in tree:
@@ -248,20 +265,11 @@ def view_schedule_calculated(project):
         rows.append([task_id,task.name,d,es,ef,ls,lf,f])
     print_table(headers, rows)
     print()
-    print("Critical Path(s):")
-    for path in schedule.critical_paths:
-        print(" → ".join(str(task) for task in path))
 
 def view_schedule_scheduled(project):
     schedule = project.schedule
     tree = schedule.hierarchy.get_tree()
-    print()
-    print(f"    PROJECT: {project.name}")
-    print(f"    Duration: {schedule.duration}")
-    print(f"    Target Start: {project.start_date}")
-    print(f"    Target Finish: {project.finish_date}")
-    print("~" * 69)
-    print()
+
     headers = ['ID','TASK','START','END','FLOAT']
     rows = []
     for task_id in tree:
@@ -277,10 +285,6 @@ def view_schedule_scheduled(project):
         rows.append([tree[task_id], task.name, start.strftime('%#m/%#d/%y'), end.strftime('%#m/%#d/%y'), f])
     print_table(headers, rows)
     print()
-    print("Critical Path(s):")
-    for path in schedule.critical_paths:
-        print(" → ".join(str(task) for task in path))
-    return f"-"* 69
 
 def render_log(project):
     print()

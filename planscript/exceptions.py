@@ -3,3 +3,7 @@ class ParseError(Exception):
 
 class ValidationError(Exception):
     pass
+
+
+class SchedulingError(Exception):
+    """The project cannot produce the requested schedule."""

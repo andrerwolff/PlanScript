@@ -39,6 +39,7 @@ class ProjectReport:
     
     name: str
     status: ProjectStatus
+    as_of: date
     planned_start: date | None
     planned_finish: date | None
     planned_duration: timedelta | None
@@ -47,9 +48,12 @@ class ProjectReport:
     overdue_tasks: list[TaskReport]
     upcoming_deadlines: list[TaskReport]
     upcoming_starts: list[TaskReport]
+    look_ahead: timedelta
 
     def render_text(self):
-        str = (f"\nProject Name: {self.name}\n\n"
+        str = (f"\nStatus Report as-of {self.as_of}\n"
+              f"=======================================\n"
+              f"Project Name: {self.name}\n\n"
               f"    Status: {self.status.value}\n\n"
               f"    Planned Start: {self.planned_start}\n"
               f"    Planned Finish: {self.planned_finish}\n"
@@ -59,10 +63,10 @@ class ProjectReport:
               f"Overdue Tasks\n")
         for t_report in self.overdue_tasks:
             str += (f"    {t_report} is overdue\n")
-        str += ("Upcoming Deadlines\n")
+        str += (f"Upcoming Deadlines (+{self.look_ahead.days}d)\n")
         for t_report in self.upcoming_deadlines:
             str += (f"    {t_report} is due on {t_report.planned_finish}\n")
-        str += ("Upcoming Tasks\n")
+        str += (f"Upcoming Tasks (+{self.look_ahead.days}d)\n")
         for t_report in self.upcoming_starts:
             str += (f"    {t_report} starts on {t_report.planned_start}\n")
         return str
@@ -82,6 +86,7 @@ class ReportBuilder:
         return ProjectReport(
             name = self.project.name,
             status = self._project_status(),
+            as_of=self.as_of,
             planned_start = self.project.start_date,
             planned_finish = self.project.finish_date,
             planned_duration = self.project.schedule.duration,
@@ -89,7 +94,8 @@ class ReportBuilder:
             progress = analysis.project_progress(),
             overdue_tasks = overdue_tasks,
             upcoming_deadlines = upcoming_deadlines,
-            upcoming_starts= upcoming_starts
+            upcoming_starts= upcoming_starts,
+            look_ahead=self.look_ahead
         )
 
     def _project_status(self) -> ProjectStatus:

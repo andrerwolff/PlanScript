@@ -11,6 +11,7 @@ based on their descendant tasks.
 from datetime import timedelta, date
 from dataclasses import dataclass
 
+from planscript.exceptions import SchedulingError
 from planscript.model.schedule import Schedule
 from planscript.model.hierarchy import TaskHierarchy
 from planscript.model.dependency import DependencyType, DependencyGraph
@@ -43,7 +44,11 @@ class Scheduler:
 
         Raises:
             ValueError: If the project contains a circular dependency.
+            SchedulingError: If the project has no tasks to schedule.
         """
+        if not project.tasks:
+            raise SchedulingError("Project has no tasks to schedule.")
+
         graph = DependencyGraph(project)
         hierarchy = TaskHierarchy(project.tasks)
         ordered_task_ids = graph.topological_sort()

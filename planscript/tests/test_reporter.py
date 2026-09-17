@@ -22,4 +22,3 @@ class ValidatePerformance(unittest.TestCase):
         report = ReportBuilder(self.project).build()
         str = report.render_text()
         print(str)
-        self.assertFalse(True)
