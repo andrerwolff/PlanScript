@@ -3,6 +3,48 @@ from operator import attrgetter
 from planscript.model.task import Task
 
 
+class Table:
+    def __init__(self, headers, rows):
+        self.headers = headers
+        self.rows = rows
+
+    def render(self):
+        pass
+    def print(self):
+        print(self.render())
+
+def print_table(headers, rows):
+    widths = calculate_col_widths(headers, rows)
+    table_width = sum(widths)+len(widths)+1
+
+    print("-"*table_width)
+    print(format_row(headers, widths))
+    print("-"*table_width)
+    for row in rows:
+        print(format_row(row, widths))
+    print("-"*table_width)
+
+def calculate_col_widths(headers, rows):
+    widths = []
+    for col in range(len(headers)):
+        width = len(str(headers[col]))+2
+
+        for row in rows:
+            width = max(width, len(str(row[col]))+2)
+
+        widths.append(width)
+    return widths
+
+def format_row(row, widths):
+    parts = []
+
+    for value, width in zip(row, widths):
+        parts.append(f"{str(value):<{width}}")
+
+    return "|"+"|".join(parts)+"|"
+
+    
+
 
 def show_main_menu():
     print()
@@ -182,7 +224,6 @@ def show_schedule_menu(project):
 def view_schedule_calculated(project):
     schedule = project.schedule
     tree = schedule.hierarchy.get_tree()
-    c1 = len(max(tree.values(), key=len))
     print()
     print(f"    PROJECT: {project.name}")
     print(f"    Duration: {schedule.duration}")
@@ -190,37 +231,30 @@ def view_schedule_calculated(project):
     print(f"    Target Finish: {project.finish_date}")
     print("~" * 69)
     print()
-    print(f"|{'ID':<{c1}}|{'TASK':<25}|{'DUR':^5}|{'ES':^5}|{'EF':^5}|{'LS':^5}|{'LF':^5}|{'FLOAT':^5}|")
-    print("-" *69)
-
+    headers = ['ID','TASK','DUR','ES','EF','LS','LF','FLOAT']
+    rows = []
     for task_id in tree:
         task = project.tasks[task_id]
-
         if schedule.hierarchy.is_summary(task_id):
             d,es,ef,ls,lf,f = ("-","-","-","-","-","-")
-            print(f" {task_id:<{c1}} {task.name:<25} {d:^5} {es:^5} {ef:^5} {ls:^5} {lf:^5} {f:^5} ")
-            continue
+        else:
+            d = task.duration.days
+            es = schedule.early_start[task_id].days
+            ef = schedule.early_finish[task_id].days
+            ls = schedule.late_start[task_id].days
+            lf = schedule.late_finish[task_id].days
+            f = schedule.total_float[task_id].days
 
-        d = task.duration.days
-        es = schedule.early_start[task_id].days
-        ef = schedule.early_finish[task_id].days
-        ls = schedule.late_start[task_id].days
-        lf = schedule.late_finish[task_id].days
-        f = schedule.total_float[task_id].days
-
-        print(f" {task_id:<{c1}} {task.name:<25} {d:^5} {es:^5} {ef:^5} {ls:^5} {lf:^5} {f:^5} ")
-    print(f"-"* 69)
+        rows.append([task_id,task.name,d,es,ef,ls,lf,f])
+    print_table(headers, rows)
     print()
     print("Critical Path(s):")
     for path in schedule.critical_paths:
         print(" → ".join(str(task) for task in path))
-    input("Press Enter to continue...")
 
 def view_schedule_scheduled(project):
     schedule = project.schedule
     tree = schedule.hierarchy.get_tree()
-    c1 = len(max(tree.values(), key=len))
-    print(c1)
     print()
     print(f"    PROJECT: {project.name}")
     print(f"    Duration: {schedule.duration}")
@@ -228,10 +262,8 @@ def view_schedule_scheduled(project):
     print(f"    Target Finish: {project.finish_date}")
     print("~" * 69)
     print()
-    print(f"|{'ID':<{c1+1}}|{'TASK':<25}|{'START':^10}|{'END':^10}|{'FLOAT':^7}|")
-    print("-" *69)
-
-    
+    headers = ['ID','TASK','START','END','FLOAT']
+    rows = []
     for task_id in tree:
         task = project.tasks[task_id]
         start = schedule.start_dates[task_id]
@@ -242,13 +274,12 @@ def view_schedule_scheduled(project):
         else:
             f = total_float.days
 
-        print(f" {tree[task_id]:<{c1+1}} {task.name:<25} {start.strftime('%#m/%#d/%y'):^10} {end.strftime('%#m/%#d/%y'):^10} {f:^7} ")
-    print(f"-"* 69)
+        rows.append([tree[task_id], task.name, start.strftime('%#m/%#d/%y'), end.strftime('%#m/%#d/%y'), f])
+    print_table(headers, rows)
     print()
     print("Critical Path(s):")
     for path in schedule.critical_paths:
         print(" → ".join(str(task) for task in path))
-    input("Press Enter to continue...")
     return f"-"* 69
 
 def render_log(project):

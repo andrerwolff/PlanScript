@@ -14,7 +14,7 @@ task 2.1.1 Site Layout 5d
 task 2.1.2 Utility Design 10d
     depends 2.1.1
 task 2.2 Final Design 5d
-depends 2.1.2
+    depends 2.1.2
 
 task 3 Construction
 task 3.1 Mobilization 3d

@@ -455,3 +455,154 @@ def start_finish():
     project.add_dependency(predecessor=a, successor=b, dep_type=DependencyType.START_FINISH)
 
     return project
+
+
+
+def tight_redundant():
+    """
+        Test - Redundant FS Dependency
+
+        1.1 → 1.2 → 1.3
+        └──────────→ 1.3
+
+        Expected duration: 10 days
+
+        Critical path: 1.1 → 1.2 → 1.3
+
+        The direct 1.1 → 1.3 dependency is non-tight because
+        1.2 → 1.3 already determines the start of 1.3.
+        """
+
+    project = Project("Test - Redundant FS Dependency")
+
+    task1 = Task("1.1", "Task A", timedelta(days=5))
+    task2 = Task("1.2", "Task B", timedelta(days=5))
+    task3 = Task("1.3", "Task C", timedelta(days=5))
+
+    project.add_task(task1)
+    project.add_task(task2)
+    project.add_task(task3)
+
+    project.add_dependency(task1, task2)
+    project.add_dependency(task2, task3)
+    project.add_dependency(task1, task3)
+
+    return project
+
+
+def tight_FS():
+    project = Project("Tight FS")
+
+    a = Task("D.1", "A", timedelta(days=5))
+    b = Task("D.2", "B", timedelta(days=5))
+
+    project.add_task(a)
+    project.add_task(b)
+
+    project.add_dependency(predecessor=a, successor=b, dep_type=DependencyType.FINISH_START)
+
+    return project
+
+def non_tight_FS():
+    project = Project("Non Tight FS")
+
+    a = Task("D.1", "A", timedelta(days=5))
+    b = Task("D.2", "B", timedelta(days=5))
+    c = Task("D.3", "C", timedelta(days=5))
+
+    project.add_task(a)
+    project.add_task(b)
+    project.add_task(c)
+
+    project.add_dependency(predecessor=a, successor=b, dep_type=DependencyType.FINISH_START)
+    project.add_dependency(predecessor=b, successor=c, dep_type=DependencyType.FINISH_START)
+    project.add_dependency(predecessor=a, successor=c, dep_type=DependencyType.FINISH_START, lag=timedelta(days=1))
+
+    return project
+
+def tight_SS():
+    project = Project("Tight SS")
+
+    a = Task("D.1", "A", timedelta(days=5))
+    b = Task("D.2", "B", timedelta(days=5))
+
+    project.add_task(a)
+    project.add_task(b)
+
+    project.add_dependency(predecessor=a, successor=b, dep_type=DependencyType.START_START)
+
+    return project
+
+def tight_FF():
+    project = Project("Tight FF")
+
+    a = Task("D.1", "A", timedelta(days=5))
+    b = Task("D.2", "B", timedelta(days=5))
+
+    project.add_task(a)
+    project.add_task(b)
+
+    project.add_dependency(predecessor=a, successor=b, dep_type=DependencyType.FINISH_FINISH)
+
+    return project
+
+def tight_SF():
+    project = Project("Tight SF")
+
+    a = Task("D.1", "A", timedelta(days=5))
+    b = Task("D.2", "B", timedelta(days=5))
+
+    project.add_task(a)
+    project.add_task(b)
+
+    project.add_dependency(predecessor=a, successor=b, dep_type=DependencyType.START_FINISH)
+
+    return project
+
+def competing_SS():
+    project = Project("Competing SS")
+
+    a = Task("D.1", "A", timedelta(days=5))
+    b = Task("D.2", "B", timedelta(days=10))
+    c = Task("D.3", "C", timedelta(days=5))
+
+    project.add_task(a)
+    project.add_task(b)
+    project.add_task(c)
+
+    project.add_dependency(predecessor=a, successor=c, dep_type=DependencyType.START_START)
+    project.add_dependency(predecessor=b, successor=c, dep_type=DependencyType.START_START, lag=timedelta(days=5))
+
+    return project
+
+def competing_FF():
+    project = Project("Competing FF")
+
+    a = Task("D.1", "A", timedelta(days=5))
+    b = Task("D.2", "B", timedelta(days=10))
+    c = Task("D.3", "C", timedelta(days=5))
+
+    project.add_task(a)
+    project.add_task(b)
+    project.add_task(c)
+
+    project.add_dependency(predecessor=a, successor=c, dep_type=DependencyType.FINISH_FINISH)
+    project.add_dependency(predecessor=b, successor=c, dep_type=DependencyType.FINISH_FINISH, lag=timedelta(days=5))
+
+    return project
+
+def competing_SF():
+    project = Project("Competing SF")
+
+    a = Task("D.1", "A", timedelta(days=5))
+    b = Task("D.2", "B", timedelta(days=10))
+    c = Task("D.3", "C", timedelta(days=5))
+
+    project.add_task(a)
+    project.add_task(b)
+    project.add_task(c)
+
+    project.add_dependency(predecessor=a, successor=c, dep_type=DependencyType.START_FINISH)
+    project.add_dependency(predecessor=b, successor=c, dep_type=DependencyType.START_FINISH, lag=timedelta(days=5))
+
+    return project

@@ -27,13 +27,19 @@ def main():
         return summary_command(args.file)
 
     if args.command == "schedule":
-        return schedule_command(args.file)
+        v = "d"
+        if args.dates:
+            v = "d"
+        elif args.calculated:
+            v = "c"
+
+        return schedule_command(args.file,v)
 
     if args.command == "status":
         return status_command(args.file)
 
     if args.command == "gantt":
-        return gantt_command(args.file)
+        return gantt_command(args.file) 
 
     parser.error(f"Unknown command: {args.command}")
 
@@ -96,6 +102,21 @@ def summary_command(file_path: Path) -> int:
 
     return 0
 
+def schedule_command(file_path: Path, v:str) -> int:
+    """Display project schedule"""
+    project = load_project(file_path)
+
+    if project is None:
+            return 1
+    
+    project.schedule = Scheduler().calculate(project)
+    if v == "c":
+        display.view_schedule_calculated(project)
+    else:
+        display.view_schedule_scheduled(project)
+
+    return 0
+
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="planscript",
@@ -124,6 +145,16 @@ def build_parser():
         help="Calculate and display the project schedule.",
     )
     schedule.add_argument("file", type=Path)
+    schedule.add_argument(
+        "-d","--dates",
+        action="store_true",
+        help="Display Scheduled dates."
+    )
+    schedule.add_argument(
+        "-c","--calculated",
+        action="store_true",
+        help="Display calculated schedule values."
+    )
 
     status = subparsers.add_parser(
         "status",

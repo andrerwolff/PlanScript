@@ -1,4 +1,5 @@
 import unittest
+from datetime import timedelta
 
 from planscript.engine.scheduler import Scheduler
 from planscript.tests import test_projects
@@ -187,6 +188,168 @@ class TestDependencyTypes(unittest.TestCase):
 
         self.assertEqual(schedule.early_finish["D.2"].days, 0)
         self.assertEqual(schedule.early_start["D.2"].days, -3)
+
+    def test_redundant(self):
+        project = test_projects.tight_redundant()
+
+        result = Scheduler().calculate(project)
+
+        self.assertEqual(result.duration, timedelta(days=15))
+
+        self.assertEqual(result.early_start["1.1"], timedelta(days=0))
+        self.assertEqual(result.early_finish["1.1"], timedelta(days=5))
+
+        self.assertEqual(result.early_start["1.2"], timedelta(days=5))
+        self.assertEqual(result.early_finish["1.2"], timedelta(days=10))
+
+        self.assertEqual(result.early_start["1.3"], timedelta(days=10))
+        self.assertEqual(result.early_finish["1.3"], timedelta(days=15))
+
+        self.assertEqual(result.total_float["1.1"], timedelta(0))
+        self.assertEqual(result.total_float["1.2"], timedelta(0))
+        self.assertEqual(result.total_float["1.3"], timedelta(0))
+
+        self.assertEqual(result.critical_paths,[["1.1", "1.2", "1.3"]])
+
+    def test_tight_FS(self):
+        project = test_projects.tight_FS()
+
+        result = Scheduler().calculate(project)
+
+        self.assertEqual(result.duration, timedelta(days=10))
+
+        self.assertEqual(result.early_start["D.1"], timedelta(days=0))
+        self.assertEqual(result.early_finish["D.1"], timedelta(days=5))
+
+        self.assertEqual(result.early_start["D.2"], timedelta(days=5))
+        self.assertEqual(result.early_finish["D.2"], timedelta(days=10))
+
+        self.assertEqual(result.total_float["D.1"], timedelta(0))
+        self.assertEqual(result.total_float["D.2"], timedelta(0))
+
+        self.assertEqual(result.critical_paths, [["D.1", "D.2"]])
+
+    def test_tight_SS(self):
+        project = test_projects.tight_SS()
+
+        result = Scheduler().calculate(project)
+
+        self.assertEqual(result.duration, timedelta(days=5))
+
+        self.assertEqual(result.early_start["D.1"], timedelta(days=0))
+        self.assertEqual(result.early_finish["D.1"], timedelta(days=5))
+
+        self.assertEqual(result.early_start["D.2"], timedelta(days=0))
+        self.assertEqual(result.early_finish["D.2"], timedelta(days=5))
+
+        self.assertEqual(result.total_float["D.1"], timedelta(0))
+        self.assertEqual(result.total_float["D.2"], timedelta(0))
+
+        self.assertEqual(result.critical_paths, [["D.1", "D.2"]])
+
+    def test_tight_FF(self):
+        project = test_projects.tight_FF()
+
+        result = Scheduler().calculate(project)
+
+        self.assertEqual(result.duration, timedelta(days=5))
+
+        self.assertEqual(result.early_start["D.1"], timedelta(days=0))
+        self.assertEqual(result.early_finish["D.1"], timedelta(days=5))
+
+        self.assertEqual(result.early_start["D.2"], timedelta(days=0))
+        self.assertEqual(result.early_finish["D.2"], timedelta(days=5))
+
+        self.assertEqual(result.total_float["D.1"], timedelta(0))
+        self.assertEqual(result.total_float["D.2"], timedelta(0))
+
+        self.assertEqual(result.critical_paths, [["D.1", "D.2"]])
+
+    def test_tight_SF(self):
+        project = test_projects.tight_SF()
+
+        result = Scheduler().calculate(project)
+
+        self.assertEqual(result.duration, timedelta(days=5))
+
+        self.assertEqual(result.early_start["D.1"], timedelta(days=0))
+        self.assertEqual(result.early_finish["D.1"], timedelta(days=5))
+
+        self.assertEqual(result.early_start["D.2"], timedelta(days=-5))
+        self.assertEqual(result.early_finish["D.2"], timedelta(days=0))
+
+        self.assertEqual(result.total_float["D.1"], timedelta(0))
+        self.assertEqual(result.total_float["D.2"], timedelta(5))
+
+        self.assertEqual(result.critical_paths, [["D.1"]])
+
+    def test_competing_SS(self):
+        project = test_projects.competing_SS()
+
+        scheduler = Scheduler()
+        
+        schedule = scheduler.calculate(project)
+        a_to_c = project.dependencies[0]
+        b_to_c = project.dependencies[1]
+
+
+        self.assertTrue(scheduler._dependency_is_tight(project, b_to_c, schedule.early_start, schedule.early_finish))
+        self.assertFalse(scheduler._dependency_is_tight(project, a_to_c, schedule.early_start, schedule.early_finish))
+
+        self.assertEqual(schedule.early_start["D.1"], timedelta(days=0))
+        self.assertEqual(schedule.early_finish["D.1"], timedelta(days=5))
+
+        self.assertEqual(schedule.early_start["D.2"], timedelta(days=0))
+        self.assertEqual(schedule.early_finish["D.2"], timedelta(days=10))
+
+        self.assertEqual(schedule.early_start["D.3"], timedelta(days=5))
+        self.assertEqual(schedule.early_finish["D.3"], timedelta(days=10))
+
+        self.assertEqual(schedule.total_float["D.1"], timedelta(days=5))
+        self.assertEqual(schedule.total_float["D.2"], timedelta(days=0))
+        self.assertEqual(schedule.total_float["D.3"], timedelta(days=0))
+
+        self.assertEqual(schedule.critical_paths, [["D.2", "D.3"]])
+
+    def test_competing_FF(self):
+        project = test_projects.competing_FF()
+        
+        schedule = Scheduler().calculate(project)
+
+        self.assertEqual(schedule.early_start["D.1"], timedelta(days=0))
+        self.assertEqual(schedule.early_finish["D.1"], timedelta(days=5))
+
+        self.assertEqual(schedule.early_start["D.2"], timedelta(days=0))
+        self.assertEqual(schedule.early_finish["D.2"], timedelta(days=10))
+
+        self.assertEqual(schedule.early_start["D.3"], timedelta(days=10))
+        self.assertEqual(schedule.early_finish["D.3"], timedelta(days=15))
+
+        self.assertEqual(schedule.total_float["D.1"], timedelta(days=10))
+        self.assertEqual(schedule.total_float["D.2"], timedelta(days=0))
+        self.assertEqual(schedule.total_float["D.3"], timedelta(days=0))
+
+        self.assertEqual(schedule.critical_paths, [["D.2", "D.3"]])
+
+    def test_competing_SF(self):
+        project = test_projects.competing_SF()
+        
+        schedule = Scheduler().calculate(project)
+
+        self.assertEqual(schedule.early_start["D.1"], timedelta(days=0))
+        self.assertEqual(schedule.early_finish["D.1"], timedelta(days=5))
+
+        self.assertEqual(schedule.early_start["D.2"], timedelta(days=0))
+        self.assertEqual(schedule.early_finish["D.2"], timedelta(days=10))
+
+        self.assertEqual(schedule.early_start["D.3"], timedelta(days=0))
+        self.assertEqual(schedule.early_finish["D.3"], timedelta(days=5))
+
+        self.assertEqual(schedule.total_float["D.1"], timedelta(days=5))
+        self.assertEqual(schedule.total_float["D.2"], timedelta(days=0))
+        self.assertEqual(schedule.total_float["D.3"], timedelta(days=5))
+
+        self.assertEqual(schedule.critical_paths, [["D.2"]])
 
 
 if __name__ == "__main__":

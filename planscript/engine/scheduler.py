@@ -51,7 +51,7 @@ class Scheduler:
         late_start, late_finish, duration = self._backward_pass(project, graph, ordered_task_ids, early_finish)
         total_float = self._float(hierarchy, early_start, late_start)
         critical_tasks = self._critical_tasks(total_float)
-        critical_paths = self._find_critical_paths(project, critical_tasks)
+        critical_paths = self._find_critical_paths(project, critical_tasks, early_start, early_finish)
         start_dates, finish_dates = self._get_dates(project, hierarchy, ordered_task_ids, early_start, early_finish)
 
         return Schedule(hierarchy = hierarchy,
@@ -198,7 +198,31 @@ class Scheduler:
                 critical_tasks.append(task_id)
         return critical_tasks
 
-    def _find_critical_paths(self, project, critical_tasks) -> list[list[str]]:
+    def _dependency_is_tight(self, project, dependency, early_start, early_finish) -> bool:
+        """Return True if a dependency imposes the successor's early start."""
+
+        predecessor = dependency.predecessor
+        successor = dependency.successor
+
+        lag = dependency.lag
+
+        if dependency.dep_type == DependencyType.FINISH_START:
+            imposed_start = early_finish[predecessor.number] + lag
+        elif dependency.dep_type == DependencyType.START_START:
+            imposed_start = early_start[predecessor.number] + lag
+        elif dependency.dep_type == DependencyType.FINISH_FINISH:
+            imposed_finish = early_finish[predecessor.number] + lag
+            imposed_start = imposed_finish - successor.duration
+        elif dependency.dep_type == DependencyType.START_FINISH:
+            imposed_finish = early_start[predecessor.number] + lag
+            imposed_start = imposed_finish - successor.duration
+
+        else:
+            raise ValueError(f"Unknown dependency type: {dependency.dep_type}")
+
+        return early_start[successor.number] == imposed_start
+
+    def _find_critical_paths(self, project, critical_tasks, early_start, early_finish) -> list[list[str]]:
         """Find complete paths through the critical-task network.
 
         A critical path begins with a critical task that has no critical
@@ -208,42 +232,50 @@ class Scheduler:
         """
 
         critical = set(critical_tasks)
+        critical_successors = {}
+        for task_id in critical:
+            critical_successors[task_id] = []
 
-        paths = []
+        # Build the graph of only tight critical dependencies.
+        for dependency in project.dependencies:
+            predecessor_id = dependency.predecessor.number
+            successor_id = dependency.successor.number
 
-        # Find critical tasks with no critical predecessors.
+            if predecessor_id not in critical:
+                continue
+            if successor_id not in critical:
+                continue
+            if not self._dependency_is_tight(project, dependency, early_start, early_finish):
+                continue
+
+            critical_successors[predecessor_id].append(successor_id)
+
+        # Find critical tasks with no tight critical predecessors.
+        has_critical_predecessor = set()
+
+        for successors in critical_successors.values():
+            has_critical_predecessor.update(successors)
+
         starts = []
 
         for task_id in critical:
-            task = project.tasks[task_id]
-
-            has_critical_predecessor = False
-            for pred in project.get_predecessors(task):
-                if pred.number in critical:
-                    has_critical_predecessor = True
-                    break
-
-            if not has_critical_predecessor:
+            if task_id not in has_critical_predecessor:
                 starts.append(task_id)
 
+        paths = []
         # Walk forward from each critical starting task.
         def walk(task_id, path):
             path = path + [task_id]
 
-            task = project.tasks[task_id]
+            successors = critical_successors[task_id]
 
-            critical_successors = []
-            for succ in project.get_successors(task):
-                if succ.number in critical:
-                    critical_successors.append(succ.number)
-
-            if not critical_successors:
+            if not successors:
                 paths.append(path)
                 return
 
-            for successor_id in critical_successors:
+            for successor_id in successors:
                 walk(successor_id, path)
-
+                
         for start_id in starts:
             walk(start_id, [])
 
