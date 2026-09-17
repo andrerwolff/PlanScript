@@ -1,4 +1,5 @@
-from planscript.cli.app import main_menu
+from planscript.app import main
+import sys
 
 if __name__ == "__main__":
-    main_menu()
+    sys.exit(main())

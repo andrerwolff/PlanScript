@@ -102,9 +102,7 @@ class Analyzer:
     def project_progress(self) -> float | None:
         num = 0
         denom = 0
-        for task_id in self.project.tasks:
-            if self.project.schedule.hierarchy.is_summary(task_id):
-                continue
+        for task_id in self.project.schedule.hierarchy.get_leaf_ids():
             task = self.project.tasks[task_id]
             state = self.project.tracker.get_task_state(task_id)
 

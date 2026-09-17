@@ -56,15 +56,15 @@ class ProjectReport:
               f"    Planned Duration: {self.planned_duration.days}d\n"
               f"    Actual Start: {self.actual_start}\n"
               f"    Progress: {self.progress:.2g}%\n\n"
-              f"Overdue Tasks")
-        for task in self.overdue_tasks:
-            str += (f"    {task} is overdue\n")
+              f"Overdue Tasks\n")
+        for t_report in self.overdue_tasks:
+            str += (f"    {t_report} is overdue\n")
         str += ("Upcoming Deadlines\n")
-        for task in self.upcoming_deadlines:
-            str += (f"    {task} is almost due\n")
+        for t_report in self.upcoming_deadlines:
+            str += (f"    {t_report} is due on {t_report.planned_finish}\n")
         str += ("Upcoming Tasks\n")
-        for task in self.upcoming_starts:
-            str += (f"    {task} is almost starting\n")
+        for t_report in self.upcoming_starts:
+            str += (f"    {t_report} starts on {t_report.planned_start}\n")
         return str
 
 @dataclass
@@ -76,7 +76,7 @@ class ReportBuilder:
 
     def build(self) -> ProjectReport:
         analysis = Analyzer(self.project)
-        overdue_tasks, upcoming_deadlines, upcoming_starts = self._task_summary(self.as_of, self.look_ahead)
+        overdue_tasks, upcoming_deadlines, upcoming_starts = self._task_summary(analysis, self.as_of, self.look_ahead)
 
 
         return ProjectReport(
@@ -113,7 +113,7 @@ class ReportBuilder:
 
         return ProjectStatus.NOT_STARTED
 
-    def _task_summary(self, as_of: date, look_ahead: timedelta):
+    def _task_summary(self, analysis, as_of: date, look_ahead: timedelta):
         overdues = []
         upcoming_deadlines = []
         upcoming_starts = []
@@ -128,18 +128,18 @@ class ReportBuilder:
             start = self.project.schedule.start_dates[task_id]
 
             if as_of > finish:
-                overdues.append(self._task_report(task_id, state))
+                overdues.append(self._task_report(analysis, task_id, state))
                 #print(f"{task} - {(date.today() - self.project.schedule.finish_dates[task_id]).days} days overdue")
             if as_of <= finish <= as_of + look_ahead:
-                upcoming_deadlines.append(self._task_report(task_id, state))
+                upcoming_deadlines.append(self._task_report(analysis, task_id, state))
                 #print(f"{task} - due {self.project.schedule.finish_dates[task_id]}")
             if as_of <= start <= as_of + look_ahead:
                 if state.status is TaskStatus.NOT_STARTED:
-                    upcoming_starts.append(self._task_report(task_id, state))
+                    upcoming_starts.append(self._task_report(analysis, task_id, state))
                     #print(f"{task} - Starts {self.project.schedule.start_dates[task_id]}")
         return overdues, upcoming_deadlines, upcoming_starts
 
-    def _task_report(self, task_id, state) -> TaskReport:
+    def _task_report(self, analysis, task_id, state) -> TaskReport:
 
         return TaskReport(
             task_id = task_id,
@@ -149,6 +149,9 @@ class ReportBuilder:
             planned_finish = self.project.schedule.finish_dates[task_id],
             actual_start= self.project.tracker.actual_start(task_id),
             actual_finish= self.project.tracker.actual_finish(task_id),
+            start_variance = analysis.start_variance(task_id),
+            finish_variance = analysis.finish_variance(task_id),
+            duration_variance = analysis.duration_variance(task_id),
         )
 
 
