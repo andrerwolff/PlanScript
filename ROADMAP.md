@@ -25,3 +25,8 @@ Plan revisions / baselines
 Probably the biggest eventual architectural issue.
 If the user changes a planned start from 9/10 to 9/15, historical reports can become ambiguous unless you eventually have baselines or historical plan versions.
 I would explicitly leave this unresolved rather than prematurely introducing versioning.
+
+Add task status
+- [] Late: the task's planned start date has passed, but it has not started.
+- [] Blocked: The task's planned start date has passed, but it cannot start because one or more predecessors are incomplete.
+- [] Overdue: The task's planned finish date has passed, and the task is not complete.

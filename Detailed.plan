@@ -1,0 +1,451 @@
+project: Downtown Corridor Improvement Project
+    start: 2026-01-05
+    finish: 2027-03-31
+
+task 1 Project Management
+task 1.1 Notice to Proceed 0d
+task 1.2 Project Kickoff 0d
+    depends 1.1
+task 1.3 Project Management Plan 10d
+    depends 1.2
+task 1.4 Stakeholder Coordination 30d
+    depends 1.2
+task 1.5 Monthly Progress Reporting 60d
+    depends 1.2
+task 1.6 Project Management Closeout 5d
+    depends 6.4
+
+task 2 Survey and Existing Conditions
+task 2.1 Existing Conditions
+task 2.1.1 Topographic Survey 15d
+    depends 1.2
+task 2.1.2 Utility Research 10d
+    depends 1.2
+task 2.1.3 Utility Locating 10d
+    depends 2.1.2
+task 2.1.4 Pavement Condition Assessment 10d
+    depends 1.2
+task 2.1.5 Drainage Investigation 10d
+    depends 2.1.1
+task 2.2 Existing Conditions Report 5d
+    depends 2.1.3
+    depends 2.1.4
+    depends 2.1.5
+
+task 3 Preliminary Design
+task 3.1 Preliminary Design
+task 3.1.1 Design Criteria 5d
+    depends 2.2
+task 3.1.2 Roadway Concept 15d
+    depends 3.1.1
+task 3.1.3 Pedestrian and Bicycle Concept 15d
+    depends 3.1.1
+task 3.1.4 Streetscape Concept 10d
+    depends 3.1.1
+task 3.1.5 Drainage Concept 10d
+    depends 3.1.1
+task 3.1.6 Preliminary Utility Coordination 10d
+    depends 3.1.1
+task 3.2 Preliminary Design Review 0d
+    depends 3.1.2
+    depends 3.1.3
+    depends 3.1.4
+    depends 3.1.5
+    depends 3.1.6
+
+task 4 Public and Agency Coordination
+task 4.1 Public Coordination
+task 4.1.1 Agency Kickoff 0d
+    depends 2.2
+task 4.1.2 First Public Open House 0d
+    depends 3.2
+task 4.1.3 Public Comment Period 15d
+    depends 4.1.2
+task 4.1.4 Public Comment Resolution 10d
+    depends 4.1.3
+task 4.1.5 Utility Coordination Meeting 0d
+    depends 3.1.6
+task 4.2 Agency Review
+task 4.2.1 Preliminary Agency Review 15d
+    depends 3.2
+task 4.2.2 Agency Comments 5d
+    depends 4.2.1
+task 4.2.3 Agency Comment Resolution 10d
+    depends 4.2.2
+task 4.2.4 Agency Approval 0d
+    depends 4.2.3
+
+task 5 Final Design
+task 5.1 Final Design
+task 5.1.1 Roadway Plans 20d
+    depends 3.2
+task 5.1.2 Grading and Drainage Plans 20d
+    depends 3.2
+task 5.1.3 Utility Plans 20d
+    depends 4.1.5
+task 5.1.4 Sidewalk and ADA Plans 15d
+    depends 3.2
+task 5.1.5 Bicycle Facilities Plans 15d
+    depends 3.2
+task 5.1.6 Streetscape Plans 15d
+    depends 3.2
+task 5.1.7 Traffic Control Plans 15d
+    depends 5.1.1
+task 5.1.8 Signing and Striping Plans 10d
+    depends 5.1.1
+task 5.1.9 Lighting Plans 15d
+    depends 5.1.6
+task 5.1.10 Landscape Plans 15d
+    depends 5.1.6
+task 5.2 Specifications and Estimates
+task 5.2.1 Technical Specifications 15d
+    depends 5.1.1
+    depends 5.1.2
+    depends 5.1.3
+task 5.2.2 Engineer's Opinion of Probable Cost 10d
+    depends 5.1.1
+    depends 5.1.2
+    depends 5.1.6
+task 5.2.3 Bid Schedule 5d
+    depends 5.2.2
+task 5.3 Final Design Review 0d
+    depends 5.1.7
+    depends 5.1.8
+    depends 5.1.9
+    depends 5.1.10
+    depends 5.2.1
+    depends 5.2.3
+    depends 4.1.4
+    depends 4.2.4
+
+task 6 Permitting and Bid
+task 6.1 Permit Package
+task 6.1.1 Permit Application 10d
+    depends 5.3
+task 6.1.2 Permit Agency Review 30d
+    depends 6.1.1
+task 6.1.3 Permit Comments 10d
+    depends 6.1.2
+task 6.1.4 Permit Comment Resolution 10d
+    depends 6.1.3
+task 6.1.5 Permit Issuance 0d
+    depends 6.1.4
+task 6.2 Bid Package
+task 6.2.1 Bid Documents 10d
+    depends 5.3
+task 6.2.2 Internal Bid Review 5d
+    depends 6.2.1
+task 6.2.3 Bid Advertisement 0d
+    depends 6.2.2
+task 6.2.4 Contractor Questions 15d
+    depends 6.2.3
+task 6.2.5 Bid Opening 0d
+    depends 6.2.4
+task 6.3 Contractor Selection
+task 6.3.1 Bid Evaluation 5d
+    depends 6.2.5
+task 6.3.2 Recommendation for Award 5d
+    depends 6.3.1
+task 6.3.3 Notice of Award 0d
+    depends 6.3.2
+task 6.3.4 Contract Execution 10d
+    depends 6.3.3
+task 6.4 Notice to Proceed for Construction 0d
+    depends 6.3.4
+    depends 6.1.5
+
+task 7 Construction
+task 7.1 Construction Mobilization
+task 7.1.1 Preconstruction Meeting 0d
+    depends 6.4
+task 7.1.2 Mobilization 10d
+    depends 7.1.1
+task 7.1.3 Traffic Control Setup 5d
+    depends 7.1.2
+task 7.1.4 Construction Survey 5d
+    depends 7.1.2
+
+task 7.2 Underground Utilities
+task 7.2.1 Utility Verification 10d
+    depends 7.1.4
+task 7.2.2 Waterline Relocation 20d
+    depends 7.2.1
+task 7.2.3 Storm Sewer Installation 25d
+    depends 7.2.1
+task 7.2.4 Utility Tie-Ins 10d
+    depends 7.2.2
+    depends 7.2.3
+
+task 7.3 Roadway Construction
+task 7.3.1 Removal and Demolition 15d
+    depends 7.1.3
+task 7.3.2 Subgrade Preparation 15d
+    depends 7.3.1
+    depends 7.2.4
+task 7.3.3 Aggregate Base 10d
+    depends 7.3.2
+task 7.3.4 Concrete Curb and Gutter 15d
+    depends 7.3.3
+task 7.3.5 Asphalt Paving 10d
+    depends 7.3.4
+
+task 7.4 Pedestrian and Bicycle Facilities
+task 7.4.1 Sidewalk Construction 20d
+    depends 7.3.3
+task 7.4.2 ADA Ramp Construction 15d
+    depends 7.4.1
+task 7.4.3 Multi-Use Path Construction 20d
+    depends 7.3.3
+task 7.4.4 Bicycle Crossing Improvements 10d
+    depends 7.4.3
+
+task 7.5 Streetscape
+task 7.5.1 Streetscape Demolition 10d
+    depends 7.3.1
+task 7.5.2 Electrical Conduit 15d
+    depends 7.5.1
+task 7.5.3 Streetlight Foundations 10d
+    depends 7.5.2
+task 7.5.4 Streetlight Installation 10d
+    depends 7.5.3
+task 7.5.5 Landscape Irrigation 10d
+    depends 7.5.1
+task 7.5.6 Landscaping and Planting 15d
+    depends 7.5.5
+task 7.5.7 Site Furnishings 10d
+    depends 7.4.1
+task 7.5.8 Streetscape Completion 0d
+    depends 7.5.4
+    depends 7.5.6
+    depends 7.5.7
+
+task 7.6 Traffic Control and Safety
+task 7.6.1 Temporary Traffic Control Maintenance 60d
+    depends 7.1.3
+task 7.6.2 Permanent Signing 10d
+    depends 7.3.5
+task 7.6.3 Pavement Markings 5d
+    depends 7.3.5
+task 7.6.4 Bicycle and Pedestrian Signing 5d
+    depends 7.4.4
+
+task 7.7 Construction Completion
+task 7.7.1 Punch List Preparation 5d
+    depends 7.3.5
+    depends 7.4.2
+    depends 7.4.4
+    depends 7.5.8
+    depends 7.6.2
+    depends 7.6.3
+    depends 7.6.4
+task 7.7.2 Punch List Corrections 15d
+    depends 7.7.1
+task 7.7.3 Final Inspection 0d
+    depends 7.7.2
+task 7.7.4 Substantial Completion 0d
+    depends 7.7.3
+
+task 8 Closeout
+task 8.1 Project Closeout
+task 8.1.1 Record Drawings 20d
+    depends 7.7.4
+task 8.1.2 Operations and Maintenance Manuals 10d
+    depends 7.7.4
+task 8.1.3 Warranty Documentation 10d
+    depends 7.7.4
+task 8.1.4 Final Quantity Reconciliation 10d
+    depends 7.7.4
+task 8.1.5 Final Payment Package 5d
+    depends 8.1.1
+    depends 8.1.2
+    depends 8.1.3
+    depends 8.1.4
+task 8.1.6 Final Acceptance 0d
+    depends 8.1.5
+task 8.1.7 Project Complete 0d
+    depends 8.1.6
+
+task 9 Future / Untracked Work
+task 9.1 Future Improvements
+task 9.1.1 Optional Landscaping Enhancements 15d
+    depends 7.7.4
+task 9.1.2 Additional Wayfinding Signage 10d
+    depends 7.7.4
+task 9.1.3 Post-Construction Traffic Study 15d
+    depends 8.1.6
+task 9.1.4 Future Enhancement Decision 0d
+    depends 9.1.1
+    depends 9.1.2
+    depends 9.1.3
+
+;Tracking:
+2026-01-05
+    1.1 start
+    1.1 complete
+    1.2 start
+    1.2 complete
+
+2026-01-06 1.3 start
+2026-01-19 1.3 complete
+
+2026-01-12 1.4 start
+2026-02-10 1.4 progress 75%
+2026-02-24 1.4 complete
+
+2026-01-12 1.5 start
+2026-02-28 1.5 progress 20%
+2026-03-31 1.5 progress 35%
+2026-04-30 1.5 progress 50%
+2026-05-29 1.5 progress 65%
+2026-06-30 1.5 progress 78%
+2026-07-31 1.5 progress 88%
+2026-08-31 1.5 progress 95%
+
+2026-01-20 2.1.1 start
+2026-02-09 2.1.1 complete
+
+2026-01-20 2.1.2 start
+2026-02-02 2.1.2 complete
+
+2026-02-03 2.1.3 start
+2026-02-16 2.1.3 complete
+
+2026-01-20 2.1.4 start
+2026-02-02 2.1.4 complete
+
+2026-01-27 2.1.5 start
+2026-02-09 2.1.5 complete
+
+2026-02-17 2.2 start
+2026-02-23 2.2 complete
+
+2026-02-24 3.1.1 start
+2026-03-02 3.1.1 complete
+
+2026-03-03 3.1.2 start
+2026-03-20 3.1.2 complete
+
+2026-03-03 3.1.3 start
+2026-03-24 3.1.3 complete
+
+2026-03-03 3.1.4 start
+2026-03-16 3.1.4 complete
+
+2026-03-03 3.1.5 start
+2026-03-17 3.1.5 complete
+
+2026-03-03 3.1.6 start
+2026-03-18 3.1.6 complete
+
+2026-03-25 3.2 start
+2026-03-25 3.2 complete
+
+2026-03-26 4.1.1 start
+2026-03-26 4.1.1 complete
+
+2026-03-26 4.2.1 start
+2026-04-15 4.2.1 progress 70%
+2026-04-22 4.2.1 complete
+
+2026-04-23 4.2.2 start
+2026-04-30 4.2.2 complete
+
+2026-05-01 4.2.3 start
+2026-05-14 4.2.3 complete
+
+2026-05-15 4.2.4 start
+2026-05-15 4.2.4 complete
+
+2026-04-01 4.1.2 start
+2026-04-01 4.1.2 complete
+
+2026-04-02 4.1.3 start
+2026-04-17 4.1.3 progress 60%
+2026-04-22 4.1.3 complete
+
+2026-04-23 4.1.4 start
+2026-05-06 4.1.4 progress 80%
+2026-05-13 4.1.4 complete
+
+2026-05-18 5.1.1 start
+2026-06-12 5.1.1 complete
+
+2026-05-18 5.1.2 start
+2026-06-15 5.1.2 complete
+
+2026-05-18 5.1.3 start
+2026-06-19 5.1.3 progress 80%
+2026-06-29 5.1.3 complete
+
+2026-05-18 5.1.4 start
+2026-06-08 5.1.4 complete
+
+2026-05-18 5.1.5 start
+2026-06-05 5.1.5 complete
+
+2026-05-18 5.1.6 start
+2026-06-10 5.1.6 complete
+
+2026-06-15 5.1.7 start
+2026-06-26 5.1.7 complete
+
+2026-06-15 5.1.8 start
+2026-06-24 5.1.8 complete
+
+2026-06-11 5.1.9 start
+2026-06-26 5.1.9 complete
+
+2026-06-11 5.1.10 start
+2026-06-29 5.1.10 progress 70%
+2026-07-06 5.1.10 complete
+
+2026-06-30 5.2.1 start
+2026-07-17 5.2.1 progress 75%
+2026-07-24 5.2.1 complete
+
+2026-06-30 5.2.2 start
+2026-07-10 5.2.2 complete
+
+2026-07-13 5.2.3 start
+2026-07-17 5.2.3 complete
+
+2026-07-27 5.3 start
+2026-07-27 5.3 complete
+
+2026-07-28 6.1.1 start
+2026-08-07 6.1.1 complete
+
+2026-08-10 6.1.2 start
+2026-08-28 6.1.2 progress 60%
+2026-09-04 6.1.2 complete
+
+2026-09-08 6.1.3 start
+2026-09-18 6.1.3 progress 40%
+
+2026-07-28 6.2.1 start
+2026-08-07 6.2.1 complete
+
+2026-08-10 6.2.2 start
+2026-08-17 6.2.2 complete
+
+2026-08-18 6.2.3 start
+2026-08-18 6.2.3 complete
+
+2026-08-19 6.2.4 start
+2026-09-02 6.2.4 progress 50%
+2026-09-08 6.2.4 complete
+
+2026-09-09 6.2.5 start
+
+2026-09-09 6.3.1 start
+2026-09-15 6.3.1 progress 60%
+
+2026-09-10 7.1.1 start
+
+2026-09-14 7.1.2 start
+2026-09-18 7.1.2 progress 40%
+
+2026-09-17 7.1.3 start
+2026-09-18 7.1.3 progress 20%
+
+2026-09-18 7.1.4 start

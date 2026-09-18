@@ -7,7 +7,7 @@ def render_gantt(project):
     factor = 1
 
     if (gantt_end - gantt_start).days > 100:
-        factor = 7
+        factor = 2
     elif (gantt_end - gantt_start).days < 15:
         factor = 0.1
 
