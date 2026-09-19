@@ -12,7 +12,7 @@ from planscript.parser.parser import Parser
 
 class ValidatePerformance(unittest.TestCase):
     def setUp(self):
-        file = Path("examples/Full_Plan.plan")
+        file = Path("Full_Plan.plan")
         text = file.read_text(encoding="utf-8")
         parser = Parser()
         self.project = parser.parse(text)

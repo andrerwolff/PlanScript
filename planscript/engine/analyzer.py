@@ -25,8 +25,9 @@ class Analyzer:
     and actual values from the project's Tracker.
     """
 
-    def __init__(self, project):
+    def __init__(self, project, as_of=None):
         self.project = project
+        self.as_of = as_of if as_of is not None else date.today()
 
     def start_variance(self, task_id):
         """Return the variance between planned and actual start dates.
@@ -65,6 +66,10 @@ class Analyzer:
         dates. Milestones have zero duration and therefore zero duration
         variance.
 
+        An unfinished task's elapsed duration is measured to the Analyzer's
+        reference date, so a backdated analysis does not pick up time that has
+        elapsed since.
+
         Returns:
             A timedelta variance, or None if the task has no actual duration.
         """        
@@ -75,7 +80,7 @@ class Analyzer:
         elif planned is None:
             planned = self.project.schedule.finish_dates[task_id] - self.project.schedule.start_dates[task_id] + timedelta(days=1)
 
-        actual = self.project.tracker.actual_duration(task_id)
+        actual = self.project.tracker.actual_duration(task_id, current_date=self.as_of)
 
         if actual is None:
             return None
