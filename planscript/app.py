@@ -66,6 +66,7 @@ def check_command(file_path: Path) -> int:
 
     print(f"Project: {project.name}")
     print("Valid")
+
     return 0
 
 def summary_command(file_path: Path) -> int:

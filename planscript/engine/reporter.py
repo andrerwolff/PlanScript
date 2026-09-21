@@ -135,7 +135,10 @@ class ReportBuilder:
         for task_id in self.project.schedule.hierarchy.get_leaf_ids():
             statuses.add(self.project.tracker.get_task_state(task_id).status)
 
-        if statuses and statuses <= {TaskStatus.COMPLETED}:
+        if not statuses:
+            return ProjectStatus.NOT_STARTED
+
+        if statuses <= {TaskStatus.COMPLETED}:
             return ProjectStatus.COMPLETED
         
         if TaskStatus.IN_PROGRESS in statuses:
@@ -223,6 +226,17 @@ class ReportBuilder:
         )
 
     def _schedule_condition(self, task_id, state, as_of) -> ScheduleCondition:
+        """
+        Classify a task's current schedule condition.
+
+        An unstarted task takes precedence over an overdue finish:
+        - Blocked: planned start has passed and a predecessor is incomplete.
+        - Late: planned start has passed but all predecessors are complete.
+        - Overdue: task has started but planned finish has passed.
+
+        This prioritizes identifying work that has not started over identifying
+        work that has missed its finish date.
+        """
         
         start = self.project.schedule.start_dates[task_id]
         finish = self.project.schedule.finish_dates[task_id]

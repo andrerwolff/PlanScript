@@ -111,6 +111,15 @@ class TaskHierarchy:
 
         return descendants
 
+    def get_ancestors(self, task_id: str) -> list[str]:
+        """Return all parents of a task in reverse depth-first order."""
+        ancestors = []
+        parent_id = self.get_parent(task_id)
+        while parent_id:
+            ancestors.append(parent_id)
+            parent_id = self.get_parent(parent_id)
+        return ancestors
+
     def get_tree(self) -> dict[str, str]:
         """Return a display-oriented tree of the project's task hierarchy."""
 

@@ -11,6 +11,7 @@ logic are implemented by their respective engine classes.
 
 from dataclasses import dataclass, field
 from datetime import timedelta, date
+from decimal import Decimal
 
 from planscript.exceptions import ValidationError
 from planscript.model.calendar import Calendar
@@ -20,6 +21,7 @@ from planscript.model.hierarchy import TaskHierarchy
 from planscript.engine.tracker import Tracker
 from planscript.engine.scheduler import Schedule
 
+# TODO remove float and replace with Decimal
 
 @dataclass
 class Project:
@@ -57,6 +59,8 @@ class Project:
     tasks: dict[str, Task] = field(default_factory=dict)
     dependencies: list[Dependency] = field(default_factory=list)
     calendars: dict[str, Calendar] = field(default_factory=dict)
+
+    budget: Decimal | None = None
 
     schedule: Schedule | None = None
     tracker: Tracker = field(default_factory=Tracker)
@@ -230,6 +234,7 @@ class Project:
         self._validate_dates()
         self._validate_summaries(hierarchy)
         self._validate_dependencies(hierarchy)
+        self._validate_budget(hierarchy)
         self._validate_task_durations()
         self._validate_tracker()
 
@@ -268,6 +273,63 @@ class Project:
             DependencyGraph(self).topological_sort()
         except ValueError as e:
             raise ValidationError(str(e)) from e
+
+    def _validate_budget(self, hierarchy:TaskHierarchy) -> None:
+        for task_id in self.tasks:
+            children = hierarchy.get_children(task_id)
+            if not children:
+                continue
+
+            self._validate_budget_children(hierarchy, task_id, children)
+
+    def _validate_budget_children(self, hierarchy, task_id, children):
+        parent = self.tasks[task_id]
+
+        explicit = []
+        weighted = []
+
+        for child_id in children:
+            child = self.tasks[child_id]
+
+            if child.budget is not None and child.budget_wt is not None:
+                raise ValidationError(f"Task '{child_id}' budget cannot be explicit AND derived.")
+            if child.budget is not None:
+                explicit.append(Decimal(child.budget))
+            if child.budget_wt is not None:
+                weighted.append(Decimal(child.budget_wt))
+
+        if parent.budget_wt is not None and explicit:
+                raise ValidationError(f"Task '{task_id}' is derived by % weight and cannot have explicitly budgeted children.")
+        if weighted and explicit:
+            raise ValidationError(f"Task '{task_id}' cannot mix explicit and derived child budgets.")
+
+        if weighted:
+            if not self._has_explicit_budget_ancestor(hierarchy, task_id):
+                raise ValidationError(f"Task '{task_id}' has a weighted budget allocation but is not explicitly budgeted or have an explicitly budgeted ancestor.")
+
+            if len(weighted) != len(children):
+                raise ValidationError(f"Task '{task_id}' children must all be weighted (use 0% if needed).")
+
+            total = sum(weighted)
+            if total != 100:
+                raise ValidationError(f"Task '{task_id}' children budget weights = {total}, expected 100%.")
+
+        if explicit:
+            if parent.budget:
+                total = sum(explicit)
+                if total != parent.budget:
+                    raise ValidationError(f"Task '{task_id}' children budgets = ${total}, expected ${parent.budget}.")
+
+    def _has_explicit_budget_ancestor(self, hierarchy: TaskHierarchy, task_id) -> bool:
+        if self.tasks[task_id].budget:
+            return True
+        ancestors = hierarchy.get_ancestors(task_id)
+        if ancestors:
+            for ancestor_id in ancestors:
+                if self.tasks[ancestor_id].budget:
+                    return True
+            return False
+                
 
     def _validate_task_durations(self) -> None:
         """Validate that defined task durations are non-negative."""

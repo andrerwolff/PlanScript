@@ -7,6 +7,7 @@ distinguishes leaf tasks from summary tasks.
 
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from decimal import Decimal
 
 @dataclass
 class Task:
@@ -29,6 +30,9 @@ class Task:
     name: str
 
     duration: timedelta | None = None
+
+    budget: Decimal | None = None
+    budget_wt: Decimal | None = None
 
     #calendar: str | None = None
 

@@ -1,8 +1,9 @@
 import re
 from datetime import timedelta, date
 from dataclasses import dataclass
+from decimal import Decimal
 
-from planscript.exceptions import ParseError, ValidationError
+from planscript.exceptions import ParseError
 from planscript.model.project import Project
 from planscript.model.task import Task
 from planscript.model.dependency import Dependency
@@ -56,6 +57,14 @@ class Parser:
         r"(?:\s+(?P<lag>[+-]?\d+(?:\.\d+)?[hdw]))?$"
     )
 
+    BUDGET_PATTERN = re.compile(
+        r"^(?: {4}|\t)budget\s[$](?P<budget>\d+(?:\.\d{2})?)$"
+    )
+
+    BUDGET_WT_PATTERN = re.compile(
+        r"^(?: {4}|\t)budget\s(?P<budget_wt>\d+(?:\.\d+)?)[%]$"
+    )
+
     #Error Plan patterns
     INVALID_TASK_DURATION_PATTERN = re.compile(
         r"^task\s+"
@@ -73,15 +82,26 @@ class Parser:
     TRACKING_DATE_PATTERN = re.compile(
         r"^(?P<date>\d{4}-\d{2}-\d{2})$"
     )
-
+    # TODO harden entry pattern vs "    budget 40"
     TRACKING_ENTRY_PATTERN = re.compile(
-        r"^(?: {4}|\t)(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
+        r"^(?: {4}|\t)"
+        r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
         r"(?P<directive>.+?)$"
     )
     TRACKING_PATTERN = re.compile(
         r"^(?P<date>\d{4}-\d{2}-\d{2})\s+"
         r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
         r"(?P<directive>.+?)$"
+    )
+    INVOICE_PATTERN = re.compile(
+        r"^(?P<date>\d{4}-\d{2}-\d{2})\s+"
+        r"invoice\s+"
+        r"\$(?P<amount>\d+(?:\.\d{1,2})?)$"
+    )
+    INVOICE_ENTRY_PATTERN = re.compile(
+        r"^(?: {4}|\t)"
+        r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
+        r"\$(?P<amount>\d+(?:\.\d{1,2})?)$"
     )
 
     def parse(self, text):
@@ -90,8 +110,10 @@ class Parser:
         current_entry = None
         current_task = None
         tracking_date = None
+        invoice_date = None
         seen_project_attributes = set()
         pending_dependencies = []
+        invoice_amount = None
 
         for line_number, raw_line in enumerate(text.splitlines(), start=1):
 
@@ -223,9 +245,18 @@ class Parser:
                     dep_type=dep_type,
                     lag=lag, lag_unit=lag_unit, line_number=line_number)
                 pending_dependencies.append(pending)
-                
+                continue
 
-                current_entry = project
+            match = self.BUDGET_PATTERN.match(line)
+            if match:
+                task_budget = match.group("budget")
+                current_entry.budget = Decimal(task_budget)
+                continue
+
+            match = self.BUDGET_WT_PATTERN.match(line)
+            if match:
+                task_budget_wt = match.group("budget_wt")
+                current_entry.budget_wt = Decimal(task_budget_wt)
                 continue
 
             #Tracking Main
@@ -272,6 +303,23 @@ class Parser:
                 project.tracker.add_event(tracking_event)
 
                 current_entry = project
+                continue
+
+            match = self.INVOICE_PATTERN.match(line)
+            if match:
+                invoice_date = self.parse_date(match.group("date"), line_number)
+                invoice_amount = match.group("amount")
+                current_entry = project #???
+                continue
+
+            match = self.INVOICE_ENTRY_PATTERN.match(line)
+            if match:
+                if invoice_date is None:
+                    raise ParseError(f"Line {line_number}: Invoice entry has no date.")
+                task_id = match.group("id")
+                if task_id not in project.tasks:
+                    raise ParseError(f"Line {line_number}: Task ID '{task_id}' is not in the project.")
+                amount = match.group("amount")
                 continue
 
             # nothing recognized
