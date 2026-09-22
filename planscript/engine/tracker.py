@@ -15,6 +15,7 @@ from enum import Enum
 
 from planscript.exceptions import ValidationError, ParseError
 from planscript.model.hierarchy import TaskHierarchy
+from planscript.model.invoice import Invoice
 
 class EventDirective(Enum):
     """Supported tracking events recorded against a task."""
@@ -70,6 +71,7 @@ class Tracker:
 
     hierarchy: TaskHierarchy | None = None
     events: list[TrackingEvent] = field(default_factory=list)
+    invoices: list[Invoice] = field(default_factory=list)
 
     def actual_start(self, task_id):
         """Return the actual start date for a task.
@@ -174,6 +176,13 @@ class Tracker:
             raise ValidationError(f"Event '{tracking_event}' already exists in the project.")
         
         self.events.append(tracking_event)
+
+    def add_invoice(self, invoice: Invoice):
+
+        if invoice in self.invoices:
+            raise ValidationError(f"Event '{invoice}' already exists in the project.")
+
+        self.invoices.append(invoice)
 
     def get_events(self):
         return sorted(self.events, key=attrgetter("date"))

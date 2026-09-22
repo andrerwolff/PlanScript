@@ -7,6 +7,7 @@ from planscript.exceptions import ParseError
 from planscript.model.project import Project
 from planscript.model.task import Task
 from planscript.model.dependency import Dependency
+from planscript.model.invoice import Invoice
 from planscript.model.hierarchy import TaskHierarchy
 from planscript.engine.tracker import TrackingEvent, EventDirective
 
@@ -107,13 +108,12 @@ class Parser:
     def parse(self, text):
 
         project = None
-        current_entry = None
-        current_task = None
+        current_object = None
         tracking_date = None
-        invoice_date = None
+
         seen_project_attributes = set()
         pending_dependencies = []
-        invoice_amount = None
+
 
         for line_number, raw_line in enumerate(text.splitlines(), start=1):
 
@@ -138,7 +138,7 @@ class Parser:
                     raise ParseError(f"Line {line_number}: multiple project declarations")
 
                 project = Project(match.group("name"))
-                current_entry = project
+                current_object = project
                 continue
 
             if project is None:
@@ -147,13 +147,13 @@ class Parser:
             # Metadata
             match = self.METADATA_PATTERN.match(line)
             if match:
-                if current_entry is None:
+                if current_object is None:
                     raise ParseError(f"Line {line_number}: metadata has no preceding entry")
 
                 key = match.group("key").strip()
                 value = match.group("value").strip()
 
-                current_entry.metadata[key] = value
+                current_object.metadata[key] = value
                 continue
 
             # Calendar
@@ -164,7 +164,7 @@ class Parser:
                 
                 project.calendar = match.group("calendar").strip()
                 seen_project_attributes.add("calendar")
-                current_entry = project
+                #current_object = project
                 continue
 
             # Start target
@@ -175,7 +175,7 @@ class Parser:
                 
                 project.start_date = self.parse_date(match.group("date"), line_number)
                 seen_project_attributes.add("start")
-                current_entry = project
+                #current_object = project
                 continue
 
             # Finish target
@@ -186,7 +186,7 @@ class Parser:
                 
                 project.finish_date = self.parse_date(match.group("date"), line_number)
                 seen_project_attributes.add("finish")
-                current_entry = project
+                #current_object = project
                 continue
 
             # Invalid task duration
@@ -214,7 +214,7 @@ class Parser:
 
                 project.add_task(task)
 
-                current_entry = task
+                current_object = task
                 continue
 
             # Invalid Dependency
@@ -250,13 +250,33 @@ class Parser:
             match = self.BUDGET_PATTERN.match(line)
             if match:
                 task_budget = match.group("budget")
-                current_entry.budget = Decimal(task_budget)
+                current_object.budget = Decimal(task_budget)
                 continue
 
             match = self.BUDGET_WT_PATTERN.match(line)
             if match:
                 task_budget_wt = match.group("budget_wt")
-                current_entry.budget_wt = Decimal(task_budget_wt)
+                current_object.budget_wt = Decimal(task_budget_wt)
+                continue
+
+            match = self.INVOICE_PATTERN.match(line)
+            if match:
+                invoice_date = self.parse_date(match.group("date"), line_number)
+                invoice_amount = Decimal(match.group("amount"))
+                invoice = Invoice(invoice_date, invoice_amount)
+                current_object = invoice
+                project.tracker.add_invoice(invoice)
+                continue
+
+            match = self.INVOICE_ENTRY_PATTERN.match(line)
+            if match:
+                if invoice_date is None:
+                    raise ParseError(f"Line {line_number}: Invoice entry has no date.")
+                task_id = match.group("id")
+                if task_id not in project.tasks:
+                    raise ParseError(f"Line {line_number}: Task ID '{task_id}' is not in the project.")
+                amount = Decimal(match.group("amount"))
+                current_object.add_allocation(task_id, amount)
                 continue
 
             #Tracking Main
@@ -275,14 +295,14 @@ class Parser:
                 project.tracker.add_event(tracking_event)
 
                 tracking_date = None
-                current_entry = project
+                current_object = project
                 continue
 
             # Tracking date header for multi line
             match = self.TRACKING_DATE_PATTERN.match(line)
             if match:
                 tracking_date = self.parse_date(match.group("date"),line_number)
-                current_entry = project
+                current_object = project
                 continue
 
             # Tracking entry under a date
@@ -302,24 +322,7 @@ class Parser:
 
                 project.tracker.add_event(tracking_event)
 
-                current_entry = project
-                continue
-
-            match = self.INVOICE_PATTERN.match(line)
-            if match:
-                invoice_date = self.parse_date(match.group("date"), line_number)
-                invoice_amount = match.group("amount")
-                current_entry = project #???
-                continue
-
-            match = self.INVOICE_ENTRY_PATTERN.match(line)
-            if match:
-                if invoice_date is None:
-                    raise ParseError(f"Line {line_number}: Invoice entry has no date.")
-                task_id = match.group("id")
-                if task_id not in project.tasks:
-                    raise ParseError(f"Line {line_number}: Task ID '{task_id}' is not in the project.")
-                amount = match.group("amount")
+                current_object = project
                 continue
 
             # nothing recognized
