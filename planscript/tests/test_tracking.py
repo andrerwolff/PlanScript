@@ -2,7 +2,7 @@ import unittest
 import textwrap
 
 from planscript.exceptions import   ValidationError, ParseError
-from planscript.engine.tracker import   TrackingEvent, Tracker, EventDirective, TaskStatus
+from planscript.engine.tracker import   TaskEvent, Tracker, EventDirective, TaskStatus
 from planscript.parser.parser import Parser
 
 class ValidateTracker(unittest.TestCase):
@@ -21,7 +21,7 @@ class ValidateTracker(unittest.TestCase):
 
         project = self.parser.parse(plan)
 
-        events = project.tracker.get_task_events("1.1")
+        events = project.tracker.get_tasks_events("1.1")
 
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].task_id, "1.1")
@@ -44,10 +44,10 @@ class ValidateTracker(unittest.TestCase):
 
         project = self.parser.parse(plan)
 
-        self.assertEqual(len(project.tracker.events), 3)
+        self.assertEqual(len(project.tracker.task_events), 3)
 
         for task_id in ("1.1", "1.2", "1.3"):
-            events = project.tracker.get_task_events(task_id)
+            events = project.tracker.get_tasks_events(task_id)
 
             self.assertEqual(len(events), 1)
             self.assertEqual(events[0].directive, EventDirective.START)
@@ -68,8 +68,8 @@ class ValidateTracker(unittest.TestCase):
 
         project = self.parser.parse(plan)
 
-        event_1 = project.tracker.get_task_events("1.1")[0]
-        event_2 = project.tracker.get_task_events("1.2")[1]
+        event_1 = project.tracker.get_tasks_events("1.1")[0]
+        event_2 = project.tracker.get_tasks_events("1.2")[1]
 
         self.assertEqual(event_1.date, event_2.date)
         self.assertEqual(event_1.date.strftime("%Y-%m-%d"), "2026-09-11")
@@ -103,8 +103,8 @@ class ValidateTracker(unittest.TestCase):
 
         project = self.parser.parse(plan)
 
-        events_1 = project.tracker.get_task_events("1.1")
-        events_2 = project.tracker.get_task_events("1.2")
+        events_1 = project.tracker.get_tasks_events("1.1")
+        events_2 = project.tracker.get_tasks_events("1.2")
 
         self.assertEqual(len(events_1), 2)
         self.assertEqual(len(events_2), 1)

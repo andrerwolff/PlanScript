@@ -1,9 +1,10 @@
 from dataclasses import dataclass, field
+from decimal import Decimal
 from enum import Enum
 from datetime import date, timedelta
 
 from planscript.model.project import Project
-from planscript.engine.tracker import TaskStatus, TaskState
+from planscript.engine.tracker import TaskStatus, TaskState, Invoice
 from planscript.engine.analyzer import Analyzer
 
 class ProjectStatus(Enum):
@@ -21,6 +22,15 @@ class ScheduleCondition(Enum):
     LATE = "Late"
     BLOCKED = "Blocked"
     OVERDUE = "Overdue"
+
+@dataclass
+class ProjectBudgetReport:
+    project_budget: Decimal
+    project_invoiced: Decimal
+    project_paid: Decimal
+    project_remaining: Decimal
+    project_variance: Decimal
+    project_invoices: list[Invoice]
 
 @dataclass
 class TaskReport:
@@ -66,6 +76,8 @@ class ProjectReport:
     upcoming_deadlines: list[TaskReport]
     upcoming_starts: list[TaskReport]
     look_ahead: timedelta
+
+    project_budget: ProjectBudgetReport | None
 
     def render_text(self):
         str = (f"\nStatus Report as-of {self.as_of}\n"

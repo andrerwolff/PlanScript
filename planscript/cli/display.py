@@ -235,7 +235,7 @@ def view_project_summary(project):
     print(f"Tasks:         {len(project.tasks)}")
     print(f"Dependencies:  {len(project.dependencies)}")
 
-    if project.tracker.events:
+    if project.tracker.task_events:
         print(f"Tracking events: {len(project.tracker.events)}")
     else:
         print("Tracking:      Not started")

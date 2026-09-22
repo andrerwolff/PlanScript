@@ -347,5 +347,5 @@ class Project:
         for task_id in self.tasks:
             self.tracker.get_task_state(task_id)
 
-        for invoice in self.tracker.invoices:
+        for invoice in self.tracker.invoice_events:
             invoice.validate()

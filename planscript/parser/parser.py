@@ -7,9 +7,9 @@ from planscript.exceptions import ParseError
 from planscript.model.project import Project
 from planscript.model.task import Task
 from planscript.model.dependency import Dependency
-from planscript.model.invoice import Invoice
+#from planscript.model.invoice import Invoice
 from planscript.model.hierarchy import TaskHierarchy
-from planscript.engine.tracker import TrackingEvent, EventDirective
+from planscript.engine.tracker import TaskEvent, EventDirective, Invoice
 
 @dataclass
 class PendingDependency:
@@ -265,7 +265,7 @@ class Parser:
                 invoice_amount = Decimal(match.group("amount"))
                 invoice = Invoice(invoice_date, invoice_amount)
                 current_object = invoice
-                project.tracker.add_invoice(invoice)
+                project.tracker.add_invoice_event(invoice)
                 continue
 
             match = self.INVOICE_ENTRY_PATTERN.match(line)
@@ -290,9 +290,9 @@ class Parser:
                     raise ParseError(f"Line {line_number}: Task ID '{task_id}' is not in the project.")
 
                 directive, info = self.parse_event_directive(full_directive, line_number)
-                tracking_event = TrackingEvent(event_date, task_id, directive, info)
+                task_event = TaskEvent(event_date, task_id, directive, info)
                     
-                project.tracker.add_event(tracking_event)
+                project.tracker.add_task_event(task_event)
 
                 tracking_date = None
                 current_object = project
@@ -318,9 +318,9 @@ class Parser:
                     raise ParseError(f"Line {line_number}: Task ID '{task_id}' is not in the project.")
 
                 directive, info = self.parse_event_directive(full_directive,line_number)
-                tracking_event = TrackingEvent(tracking_date,task_id,directive,info)
+                task_event = TaskEvent(tracking_date,task_id,directive,info)
 
-                project.tracker.add_event(tracking_event)
+                project.tracker.add_task_event(task_event)
 
                 current_object = project
                 continue

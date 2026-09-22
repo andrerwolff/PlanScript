@@ -11,11 +11,11 @@ values are derived from that history.
 from operator import attrgetter
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from decimal import Decimal
 from enum import Enum
 
 from planscript.exceptions import ValidationError, ParseError
 from planscript.model.hierarchy import TaskHierarchy
-from planscript.model.invoice import Invoice
 
 class EventDirective(Enum):
     """Supported tracking events recorded against a task."""
@@ -34,7 +34,7 @@ class TaskStatus(Enum):
     COMPLETED = "Completed"
 
 @dataclass
-class TrackingEvent:
+class TaskEvent:
     """A dated tracking event recorded against a project task.
 
     Tracking events form the authoritative tracking history from which
@@ -60,6 +60,30 @@ class TrackingEvent:
         return f"{self.date.strftime('%#m/%#d/%y')} {self.task_id} {self.directive.value} {info}"
 
 @dataclass
+class Invoice:
+    invoice_date: date
+    invoice_amount: Decimal
+
+    allocations: dict[str,Decimal] = field(default_factory=dict)
+
+    def add_allocation(self, task_id, amount):
+        if task_id not in self.allocations:
+            self.allocations[task_id] = amount
+        else:
+            raise ValidationError(f"Amount already allocated to task")
+    
+    def validate(self):
+        if not sum(self.allocations.values()) == self.invoice_amount:
+            raise ValidationError(f"Invoice total does not match allocations")
+
+    def __str__(self):
+        str = f"INVOICE [{self.invoice_date}] - ${self.invoice_amount}\n"
+        for task_id in self.allocations:
+            str += f"    {task_id} - ${self.allocations[task_id]}\n"
+        return str
+
+
+@dataclass
 class Tracker:
     """Manage tracking history and derive actual task performance.
 
@@ -70,8 +94,8 @@ class Tracker:
     """
 
     hierarchy: TaskHierarchy | None = None
-    events: list[TrackingEvent] = field(default_factory=list)
-    invoices: list[Invoice] = field(default_factory=list)
+    task_events: list[TaskEvent] = field(default_factory=list)
+    invoice_events: list[Invoice] = field(default_factory=list)
 
     def actual_start(self, task_id):
         """Return the actual start date for a task.
@@ -98,7 +122,7 @@ class Tracker:
                 return min(starts)
             return None
 
-        for event in self.get_task_events(task_id):
+        for event in self.get_tasks_events(task_id):
             if event.directive == EventDirective.START:
                 return event.date
         return None
@@ -131,7 +155,7 @@ class Tracker:
                 return max(finishes)
             return None
 
-        for event in self.get_task_events(task_id):
+        for event in self.get_tasks_events(task_id):
             if event.directive == EventDirective.COMPLETE:
                 return event.date
         return None
@@ -170,31 +194,40 @@ class Tracker:
         #elapsed duration
         return current_date - start + timedelta(days=1)
 
-    def add_event(self, tracking_event: TrackingEvent):
+    def actual_cost(self, task_id, current_date=None):
+        actual_cost = 0
+        for invoice in self.invoice_events:
+            if invoice.invoice_date <= current_date and task_id in invoice.allocations:
+                actual_cost += invoice.allocations[task_id]
+        return actual_cost
 
-        if tracking_event in self.events:
-            raise ValidationError(f"Event '{tracking_event}' already exists in the project.")
+
+
+    def add_task_event(self, task_event:TaskEvent):
+
+        if task_event in self.task_events:
+            raise ValidationError(f"Event '{task_event}' already exists in the project.")
         
-        self.events.append(tracking_event)
+        self.task_events.append(task_event)
 
-    def add_invoice(self, invoice: Invoice):
+    def add_invoice_event(self, invoice:Invoice):
 
-        if invoice in self.invoices:
+        if invoice in self.invoice_events:
             raise ValidationError(f"Event '{invoice}' already exists in the project.")
 
-        self.invoices.append(invoice)
+        self.invoice_events.append(invoice)
 
-    def get_events(self):
+    def get_all_task_events(self):
         return sorted(self.events, key=attrgetter("date"))
 
-    def get_task_events(self, task_id):
+    def get_tasks_events(self, task_id):
         task_events = []
-        for event in self.events:
+        for event in self.task_events:
             if event.task_id == task_id:
                 task_events.append(event)
         return sorted(task_events,key=attrgetter('date'))
 
-    def get_latest_event(self):
+    def get_latest_task_event(self):
         events = self.get_events()
         if events:
             return events[-1]
@@ -203,7 +236,7 @@ class Tracker:
 
     def get_task_state(self, task_id):
         task_state = TaskState(task_id)
-        task_state._derive(self.get_task_events(task_id))
+        task_state._derive(self.get_tasks_events(task_id))
         return task_state
 
 @dataclass

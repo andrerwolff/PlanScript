@@ -35,6 +35,13 @@ def main(argv=None) -> int:
             return status_command(args.file,
                                   as_of=args.as_of,
                                   look_ahead=args.look_ahead)
+        if args.command == "budget":
+            return budget_command(args.file,
+                                  as_of=args.as_of)
+
+
+
+        
     except FileNotFoundError:
         print(f"Error: file not found: {args.file}", file=sys.stderr)
     except UnicodeDecodeError as e:
@@ -107,6 +114,11 @@ def status_command(file_path:Path, as_of:date, look_ahead:int) -> int:
 
     return 0
     
+def budget_command(file_path: Path, as_of:date) -> int:
+    """Display project financials"""
+    project = load_project(file_path)
+    project.schedule = Scheduler().calculate(project)
+    
 
 def non_negative_int(value: str) -> int:
     """Parse a non-negative CLI integer, including zero."""
@@ -147,7 +159,6 @@ def build_parser():
         help="Calculate and display the project schedule.",
     )
     schedule.add_argument("file", type=Path)
-
     schedule.add_argument(
         "-d","--dates",
         action="store_true",
@@ -179,5 +190,16 @@ def build_parser():
         type=non_negative_int,
         default=21,
         help="Number of days to look ahead (0 or greater). Default 21")
+
+    budget = subparsers.add_parser(
+        "budget",
+        help = "Display project financials.")
+    budget.add_argument("file", type=Path)
+    budget.add_argument(
+        "-ao","--as-of",
+        type=date.fromisoformat,
+        default=date.today(),
+        help="Date for the status report (YYYY-MM-DD). Default Today")
+    
 
     return parser
