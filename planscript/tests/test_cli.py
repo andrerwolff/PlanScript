@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections import namedtuple
 from pathlib import Path
 from unittest.mock import patch
 from contextlib import redirect_stdout, redirect_stderr
@@ -28,6 +29,8 @@ TRACKED_PLAN = (
     "2026-09-03 1 complete\n"
 )
 
+CliResult = namedtuple("CliResult", ["returncode", "stdout", "stderr"])
+
 
 class TestCLI(unittest.TestCase):
     def setUp(self):
@@ -37,6 +40,23 @@ class TestCLI(unittest.TestCase):
         self.file.write_text(VALID_PLAN, encoding="utf-8")
 
     def run_cli(self, command, *options):
+        """Run the CLI in-process with the subprocess contract (code, stdout, stderr).
+
+        Keeps the suite fast: spawning a Python interpreter per call cost the
+        test module ~17s; calling app.main directly costs ~0.
+        """
+        stdout, stderr = StringIO(), StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            try:
+                code = app.main([command, str(self.file), *options])
+            except SystemExit as exc:  # argparse usage/help exits
+                code = exc.code
+                if not isinstance(code, int):
+                    code = 0 if code is None else 1
+        return CliResult(code, stdout.getvalue(), stderr.getvalue())
+
+    def run_cli_subprocess(self, command, *options):
+        """One real `python -m planscript` invocation, kept as an end-to-end smoke run."""
         return subprocess.run(
             [sys.executable, "-B", "-m", "planscript", command,
              str(self.file), *options],
@@ -54,7 +74,7 @@ class TestCLI(unittest.TestCase):
     def test_agreed_cli_regressions(self):
         # Empty projects can be summarized without invoking the scheduler.
         self.file.write_text("project: Empty\n", encoding="utf-8")
-        result = self.run_cli("summary")
+        result = self.run_cli_subprocess("summary")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stderr, "")
         self.assertIn("Tasks:         0", result.stdout)

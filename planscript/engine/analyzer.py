@@ -10,8 +10,10 @@ or tracking history.
 
 from datetime import timedelta, date
 from dataclasses import dataclass
+from decimal import Decimal
 
 from planscript.exceptions import SchedulingError
+from planscript.model.project import Project
 
 
 @dataclass
@@ -19,6 +21,7 @@ class TaskVariance:
     start: timedelta | None
     finish: timedelta | None
     duration: timedelta | None
+    cost: Decimal | None
 
 class Analyzer:
     """Calculate variances between planned and actual task performance.
@@ -27,7 +30,7 @@ class Analyzer:
     and actual values from the project's Tracker.
     """
 
-    def __init__(self, project, as_of=None):
+    def __init__(self, project:Project, as_of=None):
         self.project = project
         self.as_of = as_of if as_of is not None else date.today()
 
@@ -105,11 +108,24 @@ class Analyzer:
 
         return actual - planned
 
+    def cost_variance(self, task_id):
+        budget = self.project.budget.amounts[task_id]
+        if budget is None:
+            return None
+        actual = self.project.tracker.actual_cost(task_id)
+
+        if actual is None:
+            return None
+
+        return actual - budget
+        
+
     def task_variance(self, task_id):
         return TaskVariance(
             start = self.start_variance(task_id),
             finish = self.finish_variance(task_id),
-            duration = self.duration_variance(task_id)
+            duration = self.duration_variance(task_id),
+            cost = self.cost_variance(task_id)
         )
 
     def project_actual_start(self) -> date | None:

@@ -24,6 +24,13 @@ class ScheduleCondition(Enum):
     BLOCKED = "Blocked"
     OVERDUE = "Overdue"
 
+class BudgetCondition(Enum):
+    """Derived status of a task based on budget."""
+
+    ON_TRACK = "On Track"
+    AT_RISK = "At Risk"
+    NOT_TRACKED = "Not Tracked"
+
 @dataclass
 class ProjectBudgetReport:
     project_budget: Decimal
@@ -49,6 +56,7 @@ class TaskReport:
     start_variance: timedelta | None = None
     finish_variance: timedelta | None = None
     duration_variance: timedelta | None = None
+    cost_variance: Decimal | None = None
 
     days_overdue: timedelta | None = None
     days_late: timedelta | None = None
@@ -203,7 +211,8 @@ class ReportBuilder:
         return summary
 
     def _task_report(self, analysis, task_id, state, as_of) -> TaskReport:
-        condition = self._schedule_condition(task_id, state, as_of)
+        schedule_condition = self._schedule_condition(task_id, state, as_of)
+        budget_condition = self._budget_condition(task_id, state, as_of)
 
         planned_start = self.project.schedule.start_dates[task_id]
         planned_finish = self.project.schedule.finish_dates[task_id]
@@ -214,11 +223,11 @@ class ReportBuilder:
         blocked_by = []
         root_causes = []
 
-        if condition is ScheduleCondition.OVERDUE:
+        if schedule_condition is ScheduleCondition.OVERDUE:
             days_overdue = as_of - planned_finish
-        elif condition is ScheduleCondition.LATE:
+        elif schedule_condition is ScheduleCondition.LATE:
             days_late = as_of - planned_start
-        elif condition is ScheduleCondition.BLOCKED:
+        elif schedule_condition is ScheduleCondition.BLOCKED:
             days_waiting = as_of - planned_start
             blocked_by = self._describe_blockers(task_id, as_of)
             root_causes = self._root_causes(task_id, as_of)
@@ -227,7 +236,7 @@ class ReportBuilder:
             task_id=task_id,
             name=self.project.tasks[task_id].name,
             state=state,
-            condition=condition,
+            condition=schedule_condition,
             planned_start=planned_start,
             planned_finish=planned_finish,
             actual_start=self.project.tracker.actual_start(task_id),
@@ -235,6 +244,7 @@ class ReportBuilder:
             start_variance=analysis.start_variance(task_id),
             finish_variance=analysis.finish_variance(task_id),
             duration_variance=analysis.duration_variance(task_id),
+            cost_variance=analysis.cost_variance(task_id),
             days_overdue=days_overdue,
             days_late=days_late,
             days_waiting=days_waiting,
@@ -269,7 +279,11 @@ class ReportBuilder:
         if as_of > finish:
             return ScheduleCondition.OVERDUE
         
-        return ScheduleCondition.ON_SCHEDULE        
+        return ScheduleCondition.ON_SCHEDULE
+
+    def _budget_condition(self, task_id, state, as_of) -> BudgetCondition:
+        pass
+
 
 
     def _has_incomplete_predecessors(self, task_id):
