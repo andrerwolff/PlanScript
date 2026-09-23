@@ -53,14 +53,17 @@ class TestCLI(unittest.TestCase):
         self.assertIn("Tasks:         0", result.stdout)
         self.assertNotIn("Duration:", result.stdout)
 
-        # Scheduling an empty project is an expected failure, not a traceback.
+        # Scheduling or budgeting an empty project is an expected failure,
+        # not a traceback.
         for command in ("schedule", "status"):
             with self.subTest(command=command, case="empty"):
                 self.assert_failure(self.run_cli(command), 1, "Scheduling error:")
 
+        self.assert_failure(self.run_cli("budget"), 1, "Budgeting error:")
+
         # Shared validation rejects cycles for every command.
         self.file.write_text(CYCLE_PLAN, encoding="utf-8")
-        for command in ("check", "summary", "schedule", "status"):
+        for command in ("check", "summary", "schedule", "status", "budget"):
             with self.subTest(command=command, case="cycle"):
                 self.assert_failure(
                     self.run_cli(command), 1,
@@ -79,7 +82,7 @@ class TestCLI(unittest.TestCase):
         self.assertIn("Upcoming Deadlines (+0d)", result.stdout)
 
     def test_all_commands_succeed(self):
-        for command in ("check", "summary", "schedule", "status"):
+        for command in ("check", "summary", "schedule", "status", "budget"):
             with self.subTest(command=command):
                 result = self.run_cli(command)
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -87,7 +90,7 @@ class TestCLI(unittest.TestCase):
                 self.assertEqual(result.stderr, "")
 
     def test_file_and_parse_failures(self):
-        for command in ("check", "summary", "schedule", "status"):
+        for command in ("check", "summary", "schedule", "status", "budget"):
             for contents, message in (
                 (b"not a plan", "Parse error:"),
                 (b"\xff", "Error decoding"),

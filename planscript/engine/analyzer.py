@@ -124,5 +124,3 @@ class Analyzer:
         if denom:
             return num/denom
         return None
-
-    def 

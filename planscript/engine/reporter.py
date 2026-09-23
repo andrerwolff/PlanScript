@@ -77,7 +77,7 @@ class ProjectReport:
     upcoming_starts: list[TaskReport]
     look_ahead: timedelta
 
-    project_budget: ProjectBudgetReport | None
+    project_budget: ProjectBudgetReport | None = None
 
     def render_text(self):
         str = (f"\nStatus Report as-of {self.as_of}\n"

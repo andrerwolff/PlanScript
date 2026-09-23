@@ -1,4 +1,5 @@
 from datetime import timedelta, date
+from decimal import Decimal
 
 from planscript.model.project import Project
 from planscript.model.task import Task
@@ -604,5 +605,62 @@ def competing_SF():
 
     project.add_dependency(predecessor=a, successor=c, dep_type=DependencyType.START_FINISH)
     project.add_dependency(predecessor=b, successor=c, dep_type=DependencyType.START_FINISH, lag=timedelta(days=5))
+
+    return project
+
+def simple_budget():
+    """
+    Budget Test - Explicit and Weighted Allocations
+
+    1 Summary                        no budget, rolls up from its children
+      1.1 explicit $3400
+      1.2 explicit $6250.25
+    2 Design                         explicit $250000
+      2.1 weighted 10%
+        2.1.1 weighted 40%
+        2.1.2 weighted 60%
+      2.2 weighted 90%
+    3 Construction                   explicit $45000.25
+      3.1 weighted 10%
+      3.2 weighted 40%
+      3.3 weighted 40%
+      3.4 weighted 10%
+    4 Untracked Work                 no budget at all
+
+    A weight is a share of the parent's resolved amount, so 2.1.1 takes 40%
+    of 2.1's $25000 rather than 40% of 2's $250000.
+
+    Expected amounts: 1=$9650.25, 1.1=$3400, 1.2=$6250.25, 2=$250000,
+    2.1=$25000, 2.1.1=$10000, 2.1.2=$15000, 2.2=$225000, 3=$45000.25,
+    3.1=$4500.03, 3.2=$18000.10, 3.3=$18000.10, 3.4=$4500.02
+    Expected total: $304650.50
+    Expected unallocated: 4, 4.1
+    """
+
+    project = Project("Budget Test - Explicit and Weighted Allocations")
+
+    tasks = [
+        Task("1", "Summary"),
+        Task("1.1", "Kickoff", timedelta(days=0), budget=Decimal("3400")),
+        Task("1.2", "Project Plan", timedelta(days=5), budget=Decimal("6250.25")),
+
+        Task("2", "Design", budget=Decimal("250000")),
+        Task("2.1", "Preliminary Design", budget_wt=Decimal("10")),
+        Task("2.1.1", "Site Layout", timedelta(days=5), budget_wt=Decimal("40")),
+        Task("2.1.2", "Utility Design", timedelta(days=10), budget_wt=Decimal("60")),
+        Task("2.2", "Final Design", timedelta(days=5), budget_wt=Decimal("90")),
+
+        Task("3", "Construction", budget=Decimal("45000.25")),
+        Task("3.1", "Mobilization", timedelta(days=3), budget_wt=Decimal("10")),
+        Task("3.2", "Installation", timedelta(days=15), budget_wt=Decimal("40")),
+        Task("3.3", "Inspection", timedelta(days=0), budget_wt=Decimal("40")),
+        Task("3.4", "Closeout", timedelta(days=5), budget_wt=Decimal("10")),
+
+        Task("4", "Untracked Work"),
+        Task("4.1", "Future Task", timedelta(days=10)),
+    ]
+
+    for task in tasks:
+        project.add_task(task)
 
     return project

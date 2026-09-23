@@ -195,11 +195,34 @@ class Tracker:
         return current_date - start + timedelta(days=1)
 
     def actual_cost(self, task_id, current_date=None):
-        actual_cost = 0
+        """Return the actual cost for a task.
+
+        A task's cost is the sum of the invoice amounts allocated to it,
+        including amounts allocated directly to a summary task. For summary
+        tasks, the cost also includes the costs of all descendants, so a charge
+        made directly to a summary is additional to the charges beneath it.
+
+        Returns:
+            The actual cost incurred up to the current date.
+        """
+
+        if self.hierarchy is None:
+            raise ValidationError("Hierarchy not working")
+
+        if current_date is None:
+            current_date = date.today()
+
+        cost = Decimal("0")
+
         for invoice in self.invoice_events:
             if invoice.invoice_date <= current_date and task_id in invoice.allocations:
-                actual_cost += invoice.allocations[task_id]
-        return actual_cost
+                cost += invoice.allocations[task_id]
+
+        if self.hierarchy.is_summary(task_id):
+            for child_id in self.hierarchy.get_children(task_id):
+                cost += self.actual_cost(child_id, current_date)
+
+        return cost
 
 
 

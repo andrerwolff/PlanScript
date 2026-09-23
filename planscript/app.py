@@ -4,8 +4,9 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from planscript.model import Project
-from planscript.exceptions import ParseError, SchedulingError, ValidationError
+from planscript.exceptions import ParseError, SchedulingError, ValidationError, BudgetingError
 from planscript.cli import display
+from planscript.engine.budgeter import Budgeter
 from planscript.engine.scheduler import Scheduler
 from planscript.engine.reporter import ReportBuilder
 from planscript.parser.parser import Parser
@@ -54,6 +55,8 @@ def main(argv=None) -> int:
         print(f"Validation error: {e}", file=sys.stderr)
     except SchedulingError as e:
         print(f"Scheduling error: {e}", file=sys.stderr)
+    except BudgetingError as e:
+        print(f"Budgeting error: {e}", file=sys.stderr)
     else:
         parser.error(f"Unknown command: {args.command}")
 
@@ -115,10 +118,13 @@ def status_command(file_path:Path, as_of:date, look_ahead:int) -> int:
     return 0
     
 def budget_command(file_path: Path, as_of:date) -> int:
-    """Display project financials"""
+    """Display project financials."""
     project = load_project(file_path)
-    project.schedule = Scheduler().calculate(project)
-    
+    project.budget = Budgeter().calculate(project)
+    display.view_project_header(project)
+    display.view_budget(project)
+
+    return 0
 
 def non_negative_int(value: str) -> int:
     """Parse a non-negative CLI integer, including zero."""

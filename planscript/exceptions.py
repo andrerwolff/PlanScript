@@ -7,3 +7,7 @@ class ValidationError(Exception):
 
 class SchedulingError(Exception):
     """The project cannot produce the requested schedule."""
+    pass
+
+class BudgetingError(Exception):
+    pass

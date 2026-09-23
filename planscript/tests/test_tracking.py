@@ -1,5 +1,7 @@
 import unittest
 import textwrap
+from datetime import date
+from decimal import Decimal
 
 from planscript.exceptions import   ValidationError, ParseError
 from planscript.engine.tracker import   TaskEvent, Tracker, EventDirective, TaskStatus
@@ -287,3 +289,161 @@ class TestTaskState(unittest.TestCase):
         with self.assertRaises(ValidationError):
             project = self.parser.parse(plan)
             #project.tracker.get_task_state("1.1")
+
+
+class ValidateActualCost(unittest.TestCase):
+    """Actual cost is the invoiced amount, rolled up through summary tasks.
+
+    A task's cost includes the amounts invoiced directly to it, even when it is
+    a summary task. A summary task also includes the costs of its descendants,
+    so a charge made directly to a summary is additional to the charges beneath
+    it.
+    """
+
+    def setUp(self):
+        self.parser = Parser()
+        self.as_of = date(2026, 6, 30)
+
+    def test_leaf_task_cost(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1 Summary
+        task 1.1 First 5d
+        task 1.2 Second 5d
+
+        ;Tracking
+        2026-06-01 invoice $100
+            1.1 $100
+        """)
+
+        project = self.parser.parse(plan)
+
+        self.assertEqual(project.tracker.actual_cost("1.1", self.as_of), Decimal("100"))
+        self.assertEqual(project.tracker.actual_cost("1.2", self.as_of), Decimal("0"))
+
+    def test_summary_task_rolls_up_descendants(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1 Summary
+        task 1.1 First 5d
+        task 1.2 Second 5d
+
+        ;Tracking
+        2026-06-01 invoice $200
+            1.1 $125
+            1.2 $75
+        """)
+
+        project = self.parser.parse(plan)
+
+        self.assertEqual(project.tracker.actual_cost("1", self.as_of), Decimal("200"))
+
+    def test_direct_charge_to_summary_is_additional(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1 Summary
+        task 1.1 First 5d
+        task 1.2 Second 5d
+
+        ;Tracking
+        2026-06-01 invoice $300
+            1 $100
+            1.1 $100
+            1.2 $100
+        """)
+
+        project = self.parser.parse(plan)
+
+        self.assertEqual(project.tracker.actual_cost("1.1", self.as_of), Decimal("100"))
+        self.assertEqual(project.tracker.actual_cost("1.2", self.as_of), Decimal("100"))
+        self.assertEqual(project.tracker.actual_cost("1", self.as_of), Decimal("300"))
+
+    def test_nested_summary_rolls_up_to_root(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 2 Outer
+        task 2.1 Inner
+        task 2.1.1 Leaf 5d
+        task 2.2 Sibling 5d
+
+        ;Tracking
+        2026-06-01 invoice $150
+            2.1 $50
+            2.1.1 $50
+            2.2 $50
+        """)
+
+        project = self.parser.parse(plan)
+
+        self.assertEqual(project.tracker.actual_cost("2.1.1", self.as_of), Decimal("50"))
+        self.assertEqual(project.tracker.actual_cost("2.1", self.as_of), Decimal("100"))
+        self.assertEqual(project.tracker.actual_cost("2.2", self.as_of), Decimal("50"))
+        self.assertEqual(project.tracker.actual_cost("2", self.as_of), Decimal("150"))
+
+    def test_cost_excludes_invoices_after_as_of(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1 Summary
+        task 1.1 First 5d
+
+        ;Tracking
+        2026-06-01 invoice $100
+            1.1 $100
+        2026-07-01 invoice $50
+            1 $50
+        """)
+
+        project = self.parser.parse(plan)
+
+        self.assertEqual(project.tracker.actual_cost("1", date(2026, 6, 30)), Decimal("100"))
+        self.assertEqual(project.tracker.actual_cost("1", date(2026, 7, 31)), Decimal("150"))
+
+    def test_cost_without_a_date_uses_today(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1.1 First 5d
+
+        ;Tracking
+        2026-06-01 invoice $100
+            1.1 $100
+        """)
+
+        project = self.parser.parse(plan)
+
+        # The only invoice predates any run of this test.
+        self.assertEqual(project.tracker.actual_cost("1.1"), Decimal("100"))
+
+    def test_root_costs_sum_to_invoiced_total(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1 Summary
+        task 1.1 First 5d
+        task 1.2 Second 5d
+        task 2 Other Summary
+        task 2.1 Third 5d
+
+        ;Tracking
+        2026-06-01 invoice $300
+            1 $100
+            1.1 $100
+            2.1 $100
+        """)
+
+        project = self.parser.parse(plan)
+
+        roots = project.tracker.hierarchy.get_roots()
+        rolled_up = sum((project.tracker.actual_cost(task_id, self.as_of)
+                         for task_id in roots), Decimal("0"))
+        invoiced = sum((invoice.invoice_amount
+                        for invoice in project.tracker.invoice_events), Decimal("0"))
+
+        self.assertEqual(project.tracker.actual_cost("1", self.as_of), Decimal("200"))
+        self.assertEqual(project.tracker.actual_cost("2", self.as_of), Decimal("100"))
+        self.assertEqual(rolled_up, invoiced)

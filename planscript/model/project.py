@@ -18,6 +18,7 @@ from planscript.model.calendar import Calendar
 from planscript.model.dependency import Dependency, DependencyType, DependencyGraph
 from planscript.model.task import Task
 from planscript.model.hierarchy import TaskHierarchy
+from planscript.model.budget import Budget
 from planscript.engine.tracker import Tracker
 from planscript.engine.scheduler import Schedule
 
@@ -60,7 +61,7 @@ class Project:
     dependencies: list[Dependency] = field(default_factory=list)
     calendars: dict[str, Calendar] = field(default_factory=dict)
 
-    budget: Decimal | None = None
+    budget: Budget = field(default_factory=Budget)
 
     schedule: Schedule | None = None
     tracker: Tracker = field(default_factory=Tracker)
@@ -276,13 +277,39 @@ class Project:
 
     def _validate_budget(self, hierarchy:TaskHierarchy) -> None:
         for task_id in self.tasks:
+            self._validate_budget_task(hierarchy, task_id)
+
+        for task_id in self.tasks:
             children = hierarchy.get_children(task_id)
             if not children:
                 continue
 
-            self._validate_budget_children(hierarchy, task_id, children)
+            self._validate_budget_children(task_id, children)
 
-    def _validate_budget_children(self, hierarchy, task_id, children):
+    def _validate_budget_task(self, hierarchy:TaskHierarchy, task_id:str) -> None:
+        """Validate a task's own budget allocation.
+
+        A task's budget is either explicit, weighted, or absent; it cannot be
+        both explicit and weighted. A weighted task draws its share from the
+        nearest explicitly budgeted ancestor, so one must exist.
+        """
+
+        task = self.tasks[task_id]
+
+        if task.budget is not None and task.budget_wt is not None:
+            raise ValidationError(f"Task '{task_id}' budget cannot be explicit AND derived.")
+
+        if task.budget is not None and task.budget < 0:
+            raise ValidationError(f"Task '{task_id}' budget cannot be negative.")
+
+        if task.budget_wt is not None:
+            if task.budget_wt < 0 or task.budget_wt > 100:
+                raise ValidationError(f"Task '{task_id}' budget weight = {task.budget_wt}%, expected 0% to 100%.")
+
+            if not self._has_explicit_budget_ancestor(hierarchy, task_id):
+                raise ValidationError(f"Task '{task_id}' has a weighted budget allocation but no explicitly budgeted ancestor to draw from.")
+
+    def _validate_budget_children(self, task_id, children):
         parent = self.tasks[task_id]
 
         explicit = []
@@ -291,8 +318,7 @@ class Project:
         for child_id in children:
             child = self.tasks[child_id]
 
-            if child.budget is not None and child.budget_wt is not None:
-                raise ValidationError(f"Task '{child_id}' budget cannot be explicit AND derived.")
+            # A child's own allocation is validated by _validate_budget_task.
             if child.budget is not None:
                 explicit.append(Decimal(child.budget))
             if child.budget_wt is not None:
@@ -304,9 +330,6 @@ class Project:
             raise ValidationError(f"Task '{task_id}' cannot mix explicit and derived child budgets.")
 
         if weighted:
-            if not self._has_explicit_budget_ancestor(hierarchy, task_id):
-                raise ValidationError(f"Task '{task_id}' has a weighted budget allocation but is not explicitly budgeted or have an explicitly budgeted ancestor.")
-
             if len(weighted) != len(children):
                 raise ValidationError(f"Task '{task_id}' children must all be weighted (use 0% if needed).")
 
@@ -315,20 +338,22 @@ class Project:
                 raise ValidationError(f"Task '{task_id}' children budget weights = {total}, expected 100%.")
 
         if explicit:
-            if parent.budget:
+            if parent.budget is not None:
                 total = sum(explicit)
                 if total != parent.budget:
                     raise ValidationError(f"Task '{task_id}' children budgets = ${total}, expected ${parent.budget}.")
 
     def _has_explicit_budget_ancestor(self, hierarchy: TaskHierarchy, task_id) -> bool:
-        if self.tasks[task_id].budget:
+        """Return True if the task or any of its ancestors has an explicit budget."""
+
+        if self.tasks[task_id].budget is not None:
             return True
-        ancestors = hierarchy.get_ancestors(task_id)
-        if ancestors:
-            for ancestor_id in ancestors:
-                if self.tasks[ancestor_id].budget:
-                    return True
-            return False
+
+        for ancestor_id in hierarchy.get_ancestors(task_id):
+            if self.tasks[ancestor_id].budget is not None:
+                return True
+
+        return False
                 
 
     def _validate_task_durations(self) -> None:

@@ -1,5 +1,6 @@
 import unittest
 from datetime import timedelta
+from decimal import Decimal
 
 from planscript.model.hierarchy import TaskHierarchy
 from planscript.model.project import Project, ValidationError
@@ -190,3 +191,78 @@ class TestTaskHierarchy(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             project.validate()
+
+
+class TestProjectBudgetValidation(unittest.TestCase):
+
+    def test_validate_rejects_explicit_and_weighted_budget(self):
+        project = Project("Name")
+        project.add_task(Task("1", "Task", timedelta(days=1),
+                              budget=Decimal("100"), budget_wt=Decimal("50")))
+
+        with self.assertRaisesRegex(ValidationError, "cannot be explicit AND derived"):
+            project.validate()
+
+    def test_validate_rejects_negative_budget(self):
+        project = Project("Name")
+        project.add_task(Task("1", "Task", timedelta(days=1), budget=Decimal("-100")))
+
+        with self.assertRaisesRegex(ValidationError, "budget cannot be negative"):
+            project.validate()
+
+    def test_validate_rejects_weight_above_100(self):
+        project = Project("Name")
+        project.add_task(Task("1", "Summary"))
+        project.add_task(Task("1.1", "Task", timedelta(days=1), budget_wt=Decimal("150")))
+
+        with self.assertRaisesRegex(ValidationError, "expected 0% to 100%"):
+            project.validate()
+
+    def test_validate_rejects_weighted_task_without_budgeted_ancestor(self):
+        project = Project("Name")
+        project.add_task(Task("1", "Task", timedelta(days=1), budget_wt=Decimal("50")))
+
+        with self.assertRaisesRegex(ValidationError, "no explicitly budgeted ancestor"):
+            project.validate()
+
+    def test_validate_rejects_mixed_child_budgets(self):
+        project = Project("Name")
+        project.add_task(Task("1", "Summary", None, budget=Decimal("100")))
+        project.add_task(Task("1.1", "Explicit", timedelta(days=1), budget=Decimal("100")))
+        project.add_task(Task("1.2", "Weighted", timedelta(days=1), budget_wt=Decimal("50")))
+
+        with self.assertRaisesRegex(ValidationError, "cannot mix explicit and derived"):
+            project.validate()
+
+    def test_validate_rejects_weights_not_totalling_100(self):
+        project = Project("Name")
+        project.add_task(Task("1", "Summary", None, budget=Decimal("100")))
+        project.add_task(Task("1.1", "First", timedelta(days=1), budget_wt=Decimal("40")))
+        project.add_task(Task("1.2", "Second", timedelta(days=1), budget_wt=Decimal("40")))
+
+        with self.assertRaisesRegex(ValidationError, "expected 100%"):
+            project.validate()
+
+    def test_validate_rejects_explicit_children_not_matching_parent(self):
+        project = Project("Name")
+        project.add_task(Task("1", "Summary", None, budget=Decimal("100")))
+        project.add_task(Task("1.1", "First", timedelta(days=1), budget=Decimal("60")))
+        project.add_task(Task("1.2", "Second", timedelta(days=1), budget=Decimal("30")))
+
+        with self.assertRaisesRegex(ValidationError, "expected \\$100"):
+            project.validate()
+
+    def test_validate_allows_summary_without_budget(self):
+        project = Project("Name")
+        project.add_task(Task("1", "Summary"))
+        project.add_task(Task("1.1", "First", timedelta(days=1), budget=Decimal("60")))
+        project.add_task(Task("1.2", "Second", timedelta(days=1), budget=Decimal("30")))
+
+        project.validate()
+
+    def test_validate_treats_zero_budget_as_explicit(self):
+        project = Project("Name")
+        project.add_task(Task("1", "Summary", None, budget=Decimal("0")))
+        project.add_task(Task("1.1", "Free", timedelta(days=1), budget=Decimal("0")))
+
+        project.validate()

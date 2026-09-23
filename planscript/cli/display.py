@@ -1,6 +1,9 @@
 from operator import attrgetter
+from decimal import Decimal, ROUND_HALF_UP
 
 from planscript.model.task import Task
+
+CURRENCY = Decimal("0.01")
 
 
 class Table:
@@ -284,6 +287,38 @@ def view_schedule_scheduled(project):
 
         rows.append([tree[task_id], task.name, start.strftime('%#m/%#d/%y'), end.strftime('%#m/%#d/%y'), f])
     print_table(headers, rows)
+    print()
+
+def view_budget(project):
+    budget = project.budget
+    tree = budget.hierarchy.get_tree()
+
+    headers = ['ID','TASK','BUDGET','BASIS']
+    rows = []
+    for task_id in tree:
+        task = project.tasks[task_id]
+        amount = budget.amounts.get(task_id)
+
+        if amount is None:
+            value = "-"
+        else:
+            value = f"${amount.quantize(CURRENCY, rounding=ROUND_HALF_UP):,}"
+
+        if task_id in budget.explicit:
+            basis = "explicit"
+        elif task_id in budget.weights:
+            basis = f"{budget.weights[task_id]}%"
+        elif budget.hierarchy.is_summary(task_id):
+            basis = "rollup"
+        else:
+            basis = "unallocated"
+
+        rows.append([tree[task_id], task.name, value, basis])
+
+    print_table(headers, rows)
+    print(f"    Project Total: ${budget.total.quantize(CURRENCY, rounding=ROUND_HALF_UP):,}")
+    if budget.unallocated:
+        print(f"    Unallocated: {', '.join(budget.unallocated)}")
     print()
 
 def render_log(project):
