@@ -241,7 +241,7 @@ class Tracker:
         self.invoice_events.append(invoice)
 
     def get_all_task_events(self):
-        return sorted(self.events, key=attrgetter("date"))
+        return sorted(self.task_events, key=attrgetter("date"))
 
     def get_tasks_events(self, task_id):
         task_events = []
@@ -251,7 +251,7 @@ class Tracker:
         return sorted(task_events,key=attrgetter('date'))
 
     def get_latest_task_event(self):
-        events = self.get_events()
+        events = self.get_all_task_events()
         if events:
             return events[-1]
         else:

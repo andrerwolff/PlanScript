@@ -124,6 +124,50 @@ class ValidateTracker(unittest.TestCase):
         self.assertEqual(events_1[1].directive, EventDirective.PROGRESS)
         self.assertEqual(events_2[0].directive, EventDirective.START)
 
+    def test_get_all_task_events_orders_by_date(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1.1 First Task 5d
+        task 1.2 Second Task 5d
+
+        ;Tracking
+        2026-09-12 1.1 start
+        2026-09-10 1.2 start
+        """)
+
+        project = self.parser.parse(plan)
+
+        events = project.tracker.get_all_task_events()
+
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0].task_id, "1.2")
+        self.assertEqual(events[1].task_id, "1.1")
+
+    def test_get_latest_task_event(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1.1 First Task 5d
+        task 1.2 Second Task 5d
+
+        ;Tracking
+        2026-09-10 1.1 start
+        2026-09-12 1.2 start
+        """)
+
+        project = self.parser.parse(plan)
+
+        latest = project.tracker.get_latest_task_event()
+
+        self.assertEqual(latest.task_id, "1.2")
+        self.assertEqual(latest.date.strftime("%Y-%m-%d"), "2026-09-12")
+
+    def test_get_latest_task_event_without_events(self):
+        project = self.parser.parse("project: Test\n")
+
+        self.assertIsNone(project.tracker.get_latest_task_event())
+
 class TestTaskState(unittest.TestCase):
 
     def setUp(self):

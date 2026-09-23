@@ -1,10 +1,11 @@
 import unittest
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from planscript.model.hierarchy import TaskHierarchy
 from planscript.model.project import Project, ValidationError
 from planscript.model.dependency import Dependency, DependencyType
+from planscript.model.schedule import Schedule
 from planscript.model.task import Task
 
 class TestTaskHierarchy(unittest.TestCase):
@@ -202,6 +203,29 @@ class TestProjectBudgetValidation(unittest.TestCase):
 
         with self.assertRaisesRegex(ValidationError, "cannot be explicit AND derived"):
             project.validate()
+
+
+class TestProjectCalendarField(unittest.TestCase):
+
+    def test_calendar_field_is_declared_and_defaults_to_none(self):
+        project = Project("No Calendar")
+
+        self.assertIsNone(project.calendar)
+
+
+class TestScheduleAnnotations(unittest.TestCase):
+
+    def test_cpm_annotations_match_runtime_types(self):
+        annotations = Schedule.__annotations__
+
+        self.assertEqual(annotations["early_start"], dict[str, timedelta])
+        self.assertEqual(annotations["early_finish"], dict[str, timedelta])
+        self.assertEqual(annotations["late_start"], dict[str, timedelta])
+        self.assertEqual(annotations["late_finish"], dict[str, timedelta])
+        self.assertEqual(annotations["total_float"], dict[str, timedelta | None])
+        self.assertEqual(annotations["duration"], timedelta)
+        self.assertEqual(annotations["start_dates"], dict[str, date] | None)
+        self.assertEqual(annotations["finish_dates"], dict[str, date] | None)
 
     def test_validate_rejects_negative_budget(self):
         project = Project("Name")

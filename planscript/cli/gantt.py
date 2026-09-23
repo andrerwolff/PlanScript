@@ -2,6 +2,10 @@ from datetime import timedelta
 # TODO finish this
 def render_gantt(project):
     schedule = project.schedule
+    if project.start_date is None:
+        print("Gantt requires a project start date; calculated schedule only.")
+        print()
+        return
     gantt_start = project.start_date
     gantt_end = gantt_start + schedule.duration
     factor = 1

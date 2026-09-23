@@ -11,6 +11,8 @@ or tracking history.
 from datetime import timedelta, date
 from dataclasses import dataclass
 
+from planscript.exceptions import SchedulingError
+
 
 @dataclass
 class TaskVariance:
@@ -29,6 +31,19 @@ class Analyzer:
         self.project = project
         self.as_of = as_of if as_of is not None else date.today()
 
+    def _require_dates(self):
+        """Return the schedule's calendar-date maps.
+
+        Raises:
+            SchedulingError: If the schedule is calculated-only (no project
+                start date), so calendar dates do not exist to compare against.
+        """
+        if self.project.schedule.start_dates is None:
+            raise SchedulingError(
+                "No project start date is available for date projection."
+            )
+        return self.project.schedule.start_dates, self.project.schedule.finish_dates
+
     def start_variance(self, task_id):
         """Return the variance between planned and actual start dates.
 
@@ -42,7 +57,8 @@ class Analyzer:
         actual = self.project.tracker.actual_start(task_id)
         if actual is None:
             return None
-        return actual - self.project.schedule.start_dates[task_id]
+        start_dates, _ = self._require_dates()
+        return actual - start_dates[task_id]
     
     def finish_variance(self, task_id):
         """Return the variance between planned and actual finish dates.
@@ -57,7 +73,8 @@ class Analyzer:
         actual = self.project.tracker.actual_finish(task_id)
         if actual is None:
             return None
-        return  actual - self.project.schedule.finish_dates[task_id]
+        _, finish_dates = self._require_dates()
+        return actual - finish_dates[task_id]
 
     def duration_variance(self, task_id):
         """Return the difference between actual and planned task duration.
@@ -78,7 +95,8 @@ class Analyzer:
         if planned == timedelta(0):
             return timedelta(0)
         elif planned is None:
-            planned = self.project.schedule.finish_dates[task_id] - self.project.schedule.start_dates[task_id] + timedelta(days=1)
+            start_dates, finish_dates = self._require_dates()
+            planned = finish_dates[task_id] - start_dates[task_id] + timedelta(days=1)
 
         actual = self.project.tracker.actual_duration(task_id, current_date=self.as_of)
 

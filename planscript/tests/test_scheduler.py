@@ -1,7 +1,10 @@
 import unittest
-from datetime import timedelta
+from datetime import date, timedelta
 
+from planscript.engine.analyzer import Analyzer
+from planscript.engine.reporter import ReportBuilder
 from planscript.engine.scheduler import Scheduler
+from planscript.exceptions import SchedulingError
 from planscript.tests import test_projects
 
 
@@ -350,6 +353,29 @@ class TestDependencyTypes(unittest.TestCase):
         self.assertEqual(schedule.total_float["D.3"], timedelta(days=5))
 
         self.assertEqual(schedule.critical_paths, [["D.2"]])
+
+    def test_dateless_project_is_calculated_only(self):
+        project = test_projects.simple_linear()
+
+        schedule = Scheduler().calculate(project)
+
+        self.assertIsNone(schedule.start_dates)
+        self.assertIsNone(schedule.finish_dates)
+        self.assertEqual(schedule.duration.days, 14)
+        self.assertEqual(schedule.critical_paths, [["1.1", "1.2", "1.3", "1.4"]])
+
+    def test_dateless_schedule_rejects_date_consumers(self):
+        linear = test_projects.simple_linear()
+        linear.schedule = Scheduler().calculate(linear)
+
+        with self.assertRaisesRegex(SchedulingError, "No project start date"):
+            ReportBuilder(linear, date(2026, 1, 1), timedelta(days=21)).build()
+
+        budgeted = test_projects.simple_budget()
+        budgeted.schedule = Scheduler().calculate(budgeted)
+
+        with self.assertRaisesRegex(SchedulingError, "No project start date"):
+            Analyzer(budgeted).duration_variance("1")
 
 
 if __name__ == "__main__":

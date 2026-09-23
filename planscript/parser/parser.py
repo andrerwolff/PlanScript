@@ -59,7 +59,7 @@ class Parser:
     )
 
     BUDGET_PATTERN = re.compile(
-        r"^(?: {4}|\t)budget\s[$](?P<budget>\d+(?:\.\d{2})?)$"
+        r"^(?: {4}|\t)budget\s[$](?P<budget>\d+(?:\.\d{1,2})?)$"
     )
 
     BUDGET_WT_PATTERN = re.compile(
@@ -270,8 +270,8 @@ class Parser:
 
             match = self.INVOICE_ENTRY_PATTERN.match(line)
             if match:
-                if invoice_date is None:
-                    raise ParseError(f"Line {line_number}: Invoice entry has no date.")
+                if not isinstance(current_object, Invoice):
+                    raise ParseError(f"Line {line_number}: Invoice entry has no preceeding invoice: {line}.")
                 task_id = match.group("id")
                 if task_id not in project.tasks:
                     raise ParseError(f"Line {line_number}: Task ID '{task_id}' is not in the project.")

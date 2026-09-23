@@ -22,8 +22,6 @@ from planscript.model.budget import Budget
 from planscript.engine.tracker import Tracker
 from planscript.engine.scheduler import Schedule
 
-# TODO remove float and replace with Decimal
-
 @dataclass
 class Project:
     """The complete in-memory representation of a PlanScript project.
@@ -46,7 +44,10 @@ class Project:
         finish_date: Optional planned project finish date.
         tasks: Tasks keyed by their PlanScript task number.
         dependencies: Dependency relationships between tasks.
-        calendar: Calendar definitions available to the project.
+        calendar: Calendar name from the project's calendar attribute; stored
+            but not yet interpreted.
+        calendars: Calendar definitions available to the project (always
+            empty today).
         schedule: Calculated schedule, if one has been generated.
         tracker: Tracking history and derived task states.
         metadata: Additional project-level metadata.
@@ -56,6 +57,8 @@ class Project:
 
     start_date: date | None = None
     finish_date: date | None = None
+
+    calendar: str | None = None
 
     tasks: dict[str, Task] = field(default_factory=dict)
     dependencies: list[Dependency] = field(default_factory=list)

@@ -20,6 +20,13 @@ CYCLE_PLAN = (
     "task 1 First 1d\n    depends 2\n"
     "task 2 Second 1d\n    depends 1\n"
 )
+TRACKED_PLAN = (
+    "project: Example\n    start: 2026-09-01\n"
+    "task 1 Work 2d\n"
+    ";Tracking\n"
+    "2026-09-01 1 start\n"
+    "2026-09-03 1 complete\n"
+)
 
 
 class TestCLI(unittest.TestCase):
@@ -109,6 +116,21 @@ class TestCLI(unittest.TestCase):
                 self.assertEqual(app.summary_command(self.file), 0)
         calculate.assert_not_called()
 
+    def test_summary_reports_tracking_events(self):
+        # Regression test for P0-1: summary crashed on tracked projects.
+        self.file.write_text(TRACKED_PLAN, encoding="utf-8")
+        result = self.run_cli("summary")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr, "")
+        self.assertIn("Tracking events: 2", result.stdout)
+
+        # An untracked project reports that tracking has not started.
+        self.file.write_text(VALID_PLAN, encoding="utf-8")
+        result = self.run_cli("summary")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr, "")
+        self.assertIn("Tracking:      Not started", result.stdout)
+
     def test_model_validation_rejects_cycle(self):
         project = Parser().parse(VALID_PLAN + "task 2 More work 1d\n")
         project.add_dependency(project.tasks["1"], project.tasks["2"])
@@ -129,6 +151,20 @@ class TestCLI(unittest.TestCase):
         with patch.object(app.Scheduler, "calculate", side_effect=ValueError("bug")):
             with self.assertRaisesRegex(ValueError, "bug"):
                 app.main(["schedule", str(self.file)])
+
+    def test_dateless_project_is_calculated_only(self):
+        self.file.write_text("project: NoDate\ntask 1 Work 2d\n", encoding="utf-8")
+
+        result = self.run_cli("schedule", "--dates")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr, "")
+        self.assertIn("Calculated schedule only", result.stdout)
+
+        result = self.run_cli("schedule", "--gantt")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Gantt requires a project start date", result.stdout)
+
+        self.assert_failure(self.run_cli("status"), 1, "Scheduling error:")
 
 
 if __name__ == "__main__":

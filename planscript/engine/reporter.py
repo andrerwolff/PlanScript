@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from planscript.model.project import Project
 from planscript.engine.tracker import TaskStatus, TaskState, Invoice
 from planscript.engine.analyzer import Analyzer
+from planscript.exceptions import SchedulingError
 
 class ProjectStatus(Enum):
     """Derived status of a project based on its tasks."""
@@ -121,6 +122,10 @@ class ReportBuilder:
     
 
     def build(self) -> ProjectReport:
+        if self.project.schedule.start_dates is None:
+            raise SchedulingError(
+                "No project start date is available for date projection."
+            )
         analysis = Analyzer(self.project, self.as_of)
         summary = self._task_summary(analysis, self.as_of, self.look_ahead)
 

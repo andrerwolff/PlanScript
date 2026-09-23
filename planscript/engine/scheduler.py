@@ -40,7 +40,7 @@ class Scheduler:
         4. Perform the CPM backward pass.
         5. Calculate total float.
         6. Identify critical tasks and critical paths.
-        7. Convert CPM offsets to calendar dates.
+        7. Convert CPM offsets to calendar dates when a start date exists.
 
         Raises:
             ValueError: If the project contains a circular dependency.
@@ -286,19 +286,19 @@ class Scheduler:
 
         return paths
 
-    def _get_dates(self, project, hierarchy, ordered_task_ids, early_start, early_finish) -> tuple[dict[str, date], dict[str, date]]:
+    def _get_dates(self, project, hierarchy, ordered_task_ids, early_start, early_finish) -> tuple[dict[str, date] | None, dict[str, date] | None]:
         """Convert CPM offsets into calendar start and finish dates.
 
-        Task offsets are measured from the project's planned start date. If no
-        project start date is defined, a default calendar date is used.
+        Task offsets are measured from the project's planned start date. When
+        the project has no start date, the schedule is calculated-only and
+        (None, None) is returned instead of inventing a calendar anchor.
 
         Summary-task dates are rolled up from the dates of their descendants.
         """
 
         if project.start_date is None:
-            # TODO raise validation error and force user to enter date to schedule dates
-            start_date = date(2026,1,1)
-        else:   
+            return None, None
+        else:
             start_date = project.start_date
         start_dates = {}
         finish_dates = {}

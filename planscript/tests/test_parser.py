@@ -414,6 +414,8 @@ class TestParser(unittest.TestCase):
         project = self.parser.parse(text)
 
         self.assertEqual(project.calendar, "Standard")
+        self.assertIsInstance(project.calendar, str)
+        self.assertEqual(project.calendars, {})
 
     def test_start(self):
         text = textwrap.dedent("""\
