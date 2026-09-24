@@ -32,13 +32,53 @@ class BudgetCondition(Enum):
     NOT_TRACKED = "Not Tracked"
 
 @dataclass
+class ProjectScheduleReport:
+    planned_start: date | None
+    planned_finish: date | None
+    planned_duration: timedelta | None
+    actual_start: date | None
+    forecast_finish: date | None
+    schedule_variance: timedelta | None
+
+    def render_text(self):
+        str = (f"\nSchedule Report\n"
+              f"--------------------------------------\n"
+              f"    Planned Start: {self.planned_start}\n"
+              f"    Planned Finish: {self.planned_finish}\n"
+              f"    Actual Start: {self.actual_start}\n"
+              f"    Forecast Finish: {self.forecast_finish}\n"
+              f"    Schedule Variance: {self.schedule_variance}\n")
+        return str
+    
+@dataclass
 class ProjectBudgetReport:
     project_budget: Decimal
     project_invoiced: Decimal
-    project_paid: Decimal
     project_remaining: Decimal
     project_variance: Decimal
-    project_invoices: list[Invoice]
+
+    def render_text(self):
+        str = (f"\nBudget Report\n"
+              f"--------------------------------------\n"
+              f"    Planned: {self.project_budget}\n"
+              f"    Actual: {self.project_invoiced}\n"
+              f"    Remaining: {self.project_remaining}\n"
+              f"    Variance: {self.project_variance}\n")
+        return str
+
+@dataclass
+class ProjectProgressReport:
+    planned_progress: float
+    actual_progress: float
+    actual_effort: float
+
+    def render_text(self):
+        str = (f"\nProgress Report\n"
+              f"--------------------------------------\n"
+              f"    Planned Progress: {self.planned_progress}\n"
+              f"    Actual Progress: {self.actual_progress}\n"
+              f"    Effort Consumed: {self.actual_effort}\n")
+        return str    
 
 @dataclass
 class TaskReport:
@@ -98,8 +138,9 @@ class ProjectReport:
               f"    Planned Finish: {self.planned_finish}\n"
               f"    Planned Duration: {self.planned_duration.days}d\n"
               f"    Actual Start: {self.actual_start}\n"
-              f"    Progress: {self.progress:.2g}%\n\n"
-              f"Overdue Tasks\n")
+              f"    Progress: {self.progress:.2g}%\n\n")
+        self.project_budget.render_text()
+        str += f"Overdue Tasks\n"
         for t_report in self.overdue_tasks:
             detail = "" if t_report.days_overdue is None else f" by {t_report.days_overdue.days}d"
             str += (f"    {t_report} is overdue{detail}\n")
@@ -157,6 +198,7 @@ class ReportBuilder:
             upcoming_starts=summary["starts"],
             charged_tasks=summary["charged"],
             look_ahead=self.look_ahead
+            project_budget=ProjectBudgetReport()
         )
 
     def _project_status(self) -> ProjectStatus:

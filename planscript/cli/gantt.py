@@ -1,5 +1,5 @@
 from datetime import timedelta
-# TODO finish this
+
 def render_gantt(project):
     schedule = project.schedule
     if project.start_date is None:
