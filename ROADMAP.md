@@ -51,7 +51,8 @@ Work items are tagged with the modules they touch.
 * Derived actual start/finish/duration (inclusive) and actual cost rolled
   through summaries.
 * Invoices with per-task allocations that must reconcile to the invoice total.
-* `Analyzer` variance (start/finish/duration), project actual start, and
+* `Analyzer` variance (start/finish/duration), per-task and total cost
+  variance (actual vs. resolved budget), project actual start, and
   duration-weighted project progress.
 * `ReportBuilder` status report: project status, overdues, blocked tasks with
   blockers and root causes, late tasks, and look-ahead windows.
@@ -71,7 +72,7 @@ Work items are tagged with the modules they touch.
 
 **Quality baseline**
 
-* 170 `unittest` tests covering parser errors, CPM examples,
+* 180 `unittest` tests covering parser errors, CPM examples,
   dependency types, tracking, budgets, variance, reports, and CLI behavior.
 
 ---
@@ -79,62 +80,6 @@ Work items are tagged with the modules they touch.
 ## P0 — Correctness and CLI defects
 
 These are confirmed defects in the current build. Each one is small.
-
-### P0-1 `summary` crashes on tracked projects [COMPLETED]
-
-`planscript/cli/display.py` reads `project.tracker.events`, which does not
-exist (`Tracker` stores `task_events`).
-
-* Fix the attribute, or expose `Tracker.get_events()` as the single accessor
-  and use it everywhere.
-* Acceptance: `python -m planscript summary Simple.plan` exits `0` and reports
-  a tracking event count; add a CLI regression test.
-
-### P0-2 Broken and dead `Tracker` accessors [COMPLETED]
-
-`Tracker.get_all_task_events` and `Tracker.get_latest_task_event` reference
-`self.events` / `self.get_events()`, and `display.render_log` calls
-`project.tracker.get_events()`.
-
-* Decide on one event accessor API (`get_events`, `get_tasks_events`,
-  `get_latest_task_event`) and implement it against `task_events`.
-* Acceptance: unit tests exercise each accessor and event ordering by date.
-
-### P0-3 Malformed indented `$` line raises an internal error [COMPLETED]
-
-In `planscript/parser/parser.py`, an indented `<word> $<amount>` line that is
-not a valid budget used to reach the invoice-entry branch before
-`invoice_date` was assigned, raising `UnboundLocalError` instead of a
-`ParseError`. Invoice state is now tracked through the current invoice object,
-so internal errors no longer escape.
-
-* Budget and invoice amounts accept zero, one, or two decimal places: `$10` is
-  `$10.00` and `$10.5` is `$10.50`. This is documented in `SYNTAX.md`.
-* Acceptance: parser tests assert that `budget $10.5` parses as
-  `Decimal("10.5")`, that a malformed amount such as `budget $10.555` raises a
-  `ParseError` (not `UnboundLocalError`), and that `main()` reports a
-  `ParseError` as `Parse error:` with exit code 1.
-
-## Parked
-
-Items taken off the active lists on purpose. They are not abandoned, but they
-are not being worked on right now.
-
-### P0-4 Redirected `schedule` output crashes on Windows [PARKED]
-
-`display.view_critical_paths` prints `→`, which raises `UnicodeEncodeError`
-when stdout is redirected or piped on a cp1252 console (this is why the test
-suite forces `PYTHONIOENCODING=utf-8`).
-
-* Encoding work is intentionally deferred for now; the
-  `PYTHONIOENCODING=utf-8` override in `planscript/tests/test_cli.py` remains
-  the interim mitigation.
-* When this is picked up: use an ASCII separator (for example `->`) or make the
-  renderer encoding-safe, reconfigure stdout encoding in `main()`, and remove
-  the override from the CLI tests.
-* Acceptance (future): `python -m planscript schedule Simple.plan | Out-File
-  ...` succeeds on Windows without an explicit `PYTHONIOENCODING`; CLI tests
-  pass with the override removed.
 
 ## P1 — Harden existing behaviour
 
@@ -190,34 +135,6 @@ The tracking design is written; five rules are not yet enforced:
 * Acceptance: `python -m planscript status <file>` shows budget vs. invoiced and
   variance; reporter tests assert values.
 
-### P1-4 Reconcile model annotations with reality [COMPLETED]
-
-* `planscript/model/schedule.py` annotates CPM values as `int` while the
-  scheduler stores `timedelta`; `duration` is annotated `int` and holds a
-  `timedelta`.
-* `planscript/model/project.py` carries a standing `TODO` to replace `float`
-  with `Decimal`.
-* The parser assigns `project.calendar` (a `str`) although `Project` declares
-  `calendars: dict[str, Calendar]`. Decide which is the real field and align the
-  model, parser, serializer, and tests.
-* Acceptance: annotations match runtime types, tests assert the calendar
-  representation, and no stale `TODO` remains for these items.
-
-### P1-5 Reconcile the design notes with the implemented syntax [COMPLETED]
-
-`planscript/parser/DESIGN.md` and `planscript/engine/TRACKING_DESIGN.md` contain
-decisions that the implementation has since moved past — for example comments
-are `;` rather than `#`, dependencies are indented `depends` lines rather than
-`dependency 1.1 > 1.2 FS`, month durations are unreachable, and budgets,
-invoices, and the `start:`/`finish:`/`calendar:` attributes are not documented
-there at all.
-
-* Split each note document into **current behaviour** and **deferred design**, or
-  fold the current parts into `SYNTAX.md` / `DESIGN.md` and keep the notes purely
-  as open questions.
-* Acceptance: no top-level document states a syntax rule that the parser
-  rejects.
-
 ## P2 — Calendars (working time)
 
 Calendars are modelled (`planscript/model/calendar.py`) but nothing uses them,
@@ -268,27 +185,8 @@ emit syntax the parser accepts.
   live, naming, and how "recent projects" is tracked) so project storage is no
   longer an open question.
 
-## P2 — Cost and invoicing follow-ups
-
-* **P2-10** Cost variance: compare actual cost (`Tracker.actual_cost`) against the
-  resolved `Budget` per task and in total, and report it.
-* **P2-11** Invoice validation beyond totals: decide whether allocations to
-  summary tasks are legal, and detect invoices dated after the data date or
-  before project start.
-* **P2-12** Decide whether cost belongs in this tool's scope at all (see
-  [Non-goals](#non-goals)) and, if so, whether currency or a dollars-only model
-  is intended.
-
 ## P3 — Model and repository hygiene
 
-* **P3-3** Decide implied-parent semantics: a task such as `1.2.3` whose parent
-  `1.2` is absent is currently treated as a root
-  (`planscript/model/hierarchy.py`). Either require the parent or keep and
-  document the tolerance. [KEEP AND DOCUMENT, IF 1 EXISTS THEN 1.2.3 WOULD BE CHILD OF 1 IN THIS CASE]
-* **P3-4** Replace the hard-coded `2026-01-01` fallback in
-  `Scheduler._get_dates` with a calculated-only schedule: when no project
-  start date exists, `start_dates`/`finish_dates` are `None`, date views
-  print a note, and variance/status fail with `SchedulingError`.[COMPLETE]
 * **P3-5** Add a `pyproject.toml` (packaging, console script entry point,
   Python version, dev extras) so the tool installs as `planscript` rather than
   requiring `python -m planscript` from the repository root.
@@ -353,6 +251,7 @@ each one is a decision waiting to be made, not an oversight.
 | Whether tracking events may be intermixed with the project definition | **Settled for now.** Events are recognised wherever they appear; the convention is to place them last (`SYNTAX.md`). Reopen only if placement needs enforcement. | `planscript/parser/parser.py` |
 | `Project.start_date` / `finish_date` semantics | **Partly settled.** Both are soft targets and do not constrain CPM. How target analysis is surfaced is still open. | P3-12 |
 | Exact duration configuration and calendar settings | **Open.** | P2-5 |
+| Cost scope and currency | **Settled.** Cost is in scope; the model is dollars-only with no currency abstraction. | P2-12 |
 
 ## Non-goals
 
@@ -365,13 +264,15 @@ each one is a decision waiting to be made, not an oversight.
   contradictory input. It fails explicitly.
 * Being a full MS Project replacement. The value here is readability, CPM
   correctness, and honest reporting, not feature parity.
+* Multi-currency support. Cost is in scope but the model is dollars-only:
+  amounts are plain dollar figures rendered with a leading `$`.
 
 ## Working agreement
 
 * **Tests first for defects.** Every P0/P1 item lands with a test that fails
   before the change.
 * **Keep the suite green.** `python -m unittest discover -s planscript/tests -t .`
-  must pass before a commit; the current baseline is 170 tests.
+  must pass before a commit; the current baseline is 180 tests.
 * **No new runtime dependencies** without an explicit decision; `unittest` is
   the test framework.
 * **Validation ownership.** Syntax and structure in the parser, model legality
@@ -401,3 +302,110 @@ The status section above describes what the code does today, and the milestone
 table gives the order to work in. When in doubt, trust the code and the tests,
 then correct this file.
 
+# Parked Items
+
+Items taken off the active lists on purpose. They are not abandoned, but they
+are not being worked on right now.
+
+### P0-4 Redirected `schedule` output crashes on Windows [PARKED]
+
+`display.view_critical_paths` prints `→`, which raises `UnicodeEncodeError`
+when stdout is redirected or piped on a cp1252 console (this is why the test
+suite forces `PYTHONIOENCODING=utf-8`).
+
+* Encoding work is intentionally deferred for now; the
+  `PYTHONIOENCODING=utf-8` override in `planscript/tests/test_cli.py` remains
+  the interim mitigation.
+* When this is picked up: use an ASCII separator (for example `->`) or make the
+  renderer encoding-safe, reconfigure stdout encoding in `main()`, and remove
+  the override from the CLI tests.
+* Acceptance (future): `python -m planscript schedule Simple.plan | Out-File
+  ...` succeeds on Windows without an explicit `PYTHONIOENCODING`; CLI tests
+  pass with the override removed.
+
+# Completed Items
+### P0-1 `summary` crashes on tracked projects [COMPLETED]
+
+`planscript/cli/display.py` reads `project.tracker.events`, which does not
+exist (`Tracker` stores `task_events`).
+
+* Fix the attribute, or expose `Tracker.get_events()` as the single accessor
+  and use it everywhere.
+* Acceptance: `python -m planscript summary Simple.plan` exits `0` and reports
+  a tracking event count; add a CLI regression test.
+
+### P0-2 Broken and dead `Tracker` accessors [COMPLETED]
+
+`Tracker.get_all_task_events` and `Tracker.get_latest_task_event` reference
+`self.events` / `self.get_events()`, and `display.render_log` calls
+`project.tracker.get_events()`.
+
+* Decide on one event accessor API (`get_events`, `get_tasks_events`,
+  `get_latest_task_event`) and implement it against `task_events`.
+* Acceptance: unit tests exercise each accessor and event ordering by date.
+
+### P0-3 Malformed indented `$` line raises an internal error [COMPLETED]
+
+In `planscript/parser/parser.py`, an indented `<word> $<amount>` line that is
+not a valid budget used to reach the invoice-entry branch before
+`invoice_date` was assigned, raising `UnboundLocalError` instead of a
+`ParseError`. Invoice state is now tracked through the current invoice object,
+so internal errors no longer escape.
+
+* Budget and invoice amounts accept zero, one, or two decimal places: `$10` is
+  `$10.00` and `$10.5` is `$10.50`. This is documented in `SYNTAX.md`.
+* Acceptance: parser tests assert that `budget $10.5` parses as
+  `Decimal("10.5")`, that a malformed amount such as `budget $10.555` raises a
+  `ParseError` (not `UnboundLocalError`), and that `main()` reports a
+  `ParseError` as `Parse error:` with exit code 1.
+
+  ### P1-4 Reconcile model annotations with reality [COMPLETED]
+
+* `planscript/model/schedule.py` annotates CPM values as `int` while the
+  scheduler stores `timedelta`; `duration` is annotated `int` and holds a
+  `timedelta`.
+* `planscript/model/project.py` carries a standing `TODO` to replace `float`
+  with `Decimal`.
+* The parser assigns `project.calendar` (a `str`) although `Project` declares
+  `calendars: dict[str, Calendar]`. Decide which is the real field and align the
+  model, parser, serializer, and tests.
+* Acceptance: annotations match runtime types, tests assert the calendar
+  representation, and no stale `TODO` remains for these items.
+
+### P1-5 Reconcile the design notes with the implemented syntax [COMPLETED]
+
+`planscript/parser/DESIGN.md` and `planscript/engine/TRACKING_DESIGN.md` contain
+decisions that the implementation has since moved past — for example comments
+are `;` rather than `#`, dependencies are indented `depends` lines rather than
+`dependency 1.1 > 1.2 FS`, month durations are unreachable, and budgets,
+invoices, and the `start:`/`finish:`/`calendar:` attributes are not documented
+there at all.
+
+* Split each note document into **current behaviour** and **deferred design**, or
+  fold the current parts into `SYNTAX.md` / `DESIGN.md` and keep the notes purely
+  as open questions.
+* Acceptance: no top-level document states a syntax rule that the parser
+  rejects.
+
+## P2 — Cost and invoicing follow-ups
+* **P2-10** Cost variance: compare actual cost (`Tracker.actual_cost`) against the
+  resolved `Budget` per task and in total, and report it. [COMPLETED]
+* **P2-11** Invoice validation beyond totals: decide whether allocations to
+  summary tasks are legal, and detect invoices dated after the data date or
+  before project start. [COMPLETED]
+* **P2-12** Decide whether cost belongs in this tool's scope at all (see
+  [Non-goals](#non-goals)) and, if so, whether currency or a dollars-only model
+  is intended. [CONFIRMED/PARKED($)]
+
+## P3 — Model and repository hygiene (completed)
+
+* **P3-3** Implied-parent semantics decided — keep the tolerance and document
+  it: when a task's implied parent is absent, it attaches to its nearest
+  existing ancestor, so with `1` present and `1.2` absent, `1.2.3` is a child
+  of `1`; a task with no existing ancestor is a root
+  (`planscript/model/hierarchy.py`, documented in `DESIGN.md`, tested in
+  `test_model.py`). [COMPLETED]
+* **P3-4** Replace the hard-coded `2026-01-01` fallback in
+  `Scheduler._get_dates` with a calculated-only schedule: when no project
+  start date exists, `start_dates`/`finish_dates` are `None`, date views
+  print a note, and variance/status fail with `SchedulingError`. [COMPLETED]

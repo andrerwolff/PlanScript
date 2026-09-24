@@ -4,9 +4,11 @@ from datetime import date
 
 from planscript.model.task import Task
 from planscript.model.project import Project
+from planscript.engine.analyzer import Analyzer
 
 CURRENCY = Decimal("0.01")
-
+GREEN = "\033[32m"
+RESET = "\033[0m"
 
 class Table:
     def __init__(self, headers, rows):
@@ -18,8 +20,8 @@ class Table:
     def print(self):
         print(self.render())
 
-def print_table(headers, rows):
-    widths = calculate_col_widths(headers, rows)
+def print_table(headers, rows, summary_row=None):
+    widths = calculate_col_widths(headers, rows, summary_row)
     table_width = sum(widths)+len(widths)+1
 
     print("-"*table_width)
@@ -27,16 +29,24 @@ def print_table(headers, rows):
     print("-"*table_width)
     for row in rows:
         print(format_row(row, widths))
+    
+    if summary_row:
+        print("="*table_width)
+        print(format_row(summary_row, widths))
+        
     print("-"*table_width)
     return table_width
 
-def calculate_col_widths(headers, rows):
+def calculate_col_widths(headers, rows, summary_row):
     widths = []
     for col in range(len(headers)):
         width = len(str(headers[col]))+2
 
         for row in rows:
             width = max(width, len(str(row[col]))+2)
+
+        if summary_row is not None:
+            width = max(width, len(str(summary_row[col]))+2)
 
         widths.append(width)
     return widths
@@ -49,7 +59,14 @@ def format_row(row, widths):
 
     return "|"+"|".join(parts)+"|"
 
-
+def _format_currency(amount:Decimal | None) -> str:
+    if amount is None or amount == Decimal("0"):
+        return "-"
+    amount = amount.quantize(CURRENCY, rounding=ROUND_HALF_UP)
+    if amount.is_signed() and not amount.is_zero():
+        return f"(${abs(amount):,})" # TODO add colors to tables, green good red bad
+    return f"${amount:,}"
+    
 def display_task_with_dependencies(project, task):
     predecessors = project.get_predecessors(task)
 
@@ -140,7 +157,7 @@ def view_budget(project):
     rows = []
     for task_id in tree:
         task = project.tasks[task_id]
-        amount = budget.amounts.get(task_id)
+        amount = budget.get(task_id)
 
         if amount is None:
             value = "-"
@@ -164,35 +181,38 @@ def view_budget(project):
         print(f"    Unallocated: {', '.join(budget.unallocated)}")
     print()
 
-def view_cost_actuals(project:Project):
+def view_cost_actuals(project:Project, as_of=None):
     tracker = project.tracker
+    budget = project.budget
+    analysis = Analyzer(project, as_of) 
     tree = tracker.hierarchy.get_tree()
-    total_cost = 0
 
-    headers = ['ID','TASK','ACTUAL COST']
+    headers = ['ID','TASK','BUDGET', 'ACTUAL COST', 'COST VARIANCE']
     rows = []
     for task_id in tree:
-        task = project.tasks[task_id]
-        cost = tracker.actual_cost(task_id)
-        if task_id in tracker.hierarchy.get_roots():
-            total_cost += cost
-
+        task_name = project.tasks[task_id].name
+        
+        plan = budget.get(task_id)
         tree_id = tree[task_id]
         level = (len(tree_id) - len(tree_id.lstrip(' ')))*2
+        
+        plan_value = _format_currency(plan)
+        plan_value = f"{' '*level}" + plan_value
 
-        if cost is None or cost == Decimal("0"):
-            value = "-"
-        else:
-            value = f"${cost.quantize(CURRENCY, rounding=ROUND_HALF_UP):,}"
-        value = f"{' '*level}" + value
-        rows.append([tree[task_id], task.name, value])
+        cost_value = _format_currency(tracker.actual_cost(task_id, as_of))
+        cost_value = f"{' '*level}" + cost_value
 
-    width = print_table(headers, rows)
-    str = f"Project Total Cost: ${total_cost}"
-    leading_space = width - len(str)-5
-    print(f"|{' '*leading_space}{str}   |")
-    print(f"-"*width)
-    print()
+        variance_value = _format_currency(analysis.cost_variance(task_id))
+        variance_value = f"{' '*level}" + variance_value
+
+        rows.append([tree[task_id], task_name, plan_value, cost_value, variance_value])
+    
+    total_cost_value = _format_currency(tracker.total_actual_cost(as_of))
+    total_budget_value = _format_currency(budget.total)
+    total_variance_value = _format_currency(analysis.total_cost_variance())
+    
+    summary_row = ['','PROJECT TOTALS', total_budget_value, total_cost_value, total_variance_value]
+    print_table(headers, rows, summary_row)
 
 def render_log(project):
     print()

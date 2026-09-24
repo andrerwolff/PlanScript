@@ -4,9 +4,11 @@ class TaskHierarchy:
     Hierarchy is derived from the structure of task numbers. For example,
     task ``1.2.3`` has ``1.2`` as its parent when that task exists.
 
-    If an implied parent task does not exist, the task is treated as a root.
-    This allows projects to use hierarchical numbering without requiring
-    placeholder tasks for every hierarchy level.
+    When an implied parent does not exist, the task attaches to its nearest
+    existing ancestor: with ``1`` present but ``1.2`` absent, ``1.2.3`` is a
+    child of ``1``. A task with no existing ancestor is a root. This allows
+    projects to use hierarchical numbering without requiring placeholder
+    tasks for every hierarchy level.
 
     The hierarchy is distinct from the project's dependency graph.
     """
@@ -18,8 +20,6 @@ class TaskHierarchy:
 
         self.parents = {}
         self.children = {}
-        for task_id in tasks:
-            self.children[task_id]=[]
     
         self._build()
 
@@ -40,14 +40,19 @@ class TaskHierarchy:
                 self.parents[task_id] = None
                 continue
 
-            parent_id = ".".join(parts[:-1])
+            # Attach to the nearest existing ancestor: a missing intermediate
+            # level does not detach the task from the tree. With no existing
+            # ancestor the task is a root.
+            parent_id = None
+            for depth in range(len(parts) - 1, 0, -1):
+                candidate = ".".join(parts[:depth])
+                if candidate in self.tasks:
+                    parent_id = candidate
+                    break
 
-            if parent_id in self.tasks:
-                self.parents[task_id] = parent_id
+            self.parents[task_id] = parent_id
+            if parent_id is not None:
                 self.children[parent_id].append(task_id)
-            else:
-                # TODO Parse error for implied parent not existing 
-                self.parents[task_id] = None
 
     def get_parent(self, task_id: str) -> str | None:
         """Return the immediate parent task ID, or None for a root task."""
@@ -58,6 +63,73 @@ class TaskHierarchy:
         """Return the immediate child task IDs."""
 
         return self.children.get(task_id, [])
+    
+    def get_ancestors(self, task_id: str) -> list[str]:
+        """Return all parents of a task in reverse depth-first order."""
+        ancestors = []
+        parent_id = self.get_parent(task_id)
+        while parent_id:
+            ancestors.append(parent_id)
+            parent_id = self.get_parent(parent_id)
+        return ancestors
+    
+    def get_descendants(self, task_id: str) -> list[str]:
+        """Return all descendants of a task in depth-first order."""
+
+        descendants = []
+
+        for child_id in self.get_children(task_id):
+            descendants.append(child_id)
+            descendants.extend(
+                self.get_descendants(child_id)
+            )
+
+        return descendants
+
+    def get_top_down_order(self) -> list[str]:
+        """Return all task IDs in parent-before-child order."""
+        task_ids = []
+        for root_id in self.get_roots():
+            self._add_top_down(root_id, task_ids)
+        return task_ids
+
+    def _add_top_down(self, task_id, task_ids) -> None:
+        """Add a task before adding its descendants."""
+        task_ids.append(task_id)
+        for child_id in self.get_children(task_id):
+            self._add_top_down(child_id, task_ids)
+        
+
+    def get_bottom_up_order(self) -> list[str]:
+        """Return all task IDs in children-before-parent order."""
+        task_ids = []
+        for root_id in self.get_roots():
+            self._add_bottom_up(root_id, task_ids)
+        return task_ids
+
+    def _add_bottom_up(self, task_id, task_ids) -> None:
+        """Add a task after all of its descendants."""
+        for child_id in self.get_children(task_id):
+            self._add_bottom_up(child_id, task_ids)
+        task_ids.append(task_id)
+
+    def get_tree(self) -> dict[str, str]:
+        """Return a display-oriented tree of the project's task hierarchy."""
+
+        tree = {}
+        for root_id in self.get_roots():
+            self._add_to_tree(root_id, tree, 0)
+        return tree
+
+    def _add_to_tree(self, task_id: str, tree: dict[str, str], level: int) -> None:
+        """Add a task and its descendants to a display tree."""
+        tree[task_id] = (" "*level+task_id)
+        level += 1
+        children = self.get_children(task_id)
+        children.sort()
+
+        for child_id in children:
+            self._add_to_tree(child_id, tree, level)
 
     def get_roots(self) -> list[str]:
         """Return task IDs that have no parent in the hierarchy."""
@@ -87,7 +159,6 @@ class TaskHierarchy:
                 leaf_ids.append(task_id)
         return leaf_ids
 
-
     def has_children(self, task_id: str) -> bool:
         """Return True if the task has one or more immediate children."""
 
@@ -98,44 +169,3 @@ class TaskHierarchy:
 
         return self.has_children(task_id)
 
-    def get_descendants(self, task_id: str) -> list[str]:
-        """Return all descendants of a task in depth-first order."""
-
-        descendants = []
-
-        for child_id in self.get_children(task_id):
-            descendants.append(child_id)
-            descendants.extend(
-                self.get_descendants(child_id)
-            )
-
-        return descendants
-
-    def get_ancestors(self, task_id: str) -> list[str]:
-        """Return all parents of a task in reverse depth-first order."""
-        ancestors = []
-        parent_id = self.get_parent(task_id)
-        while parent_id:
-            ancestors.append(parent_id)
-            parent_id = self.get_parent(parent_id)
-        return ancestors
-
-    def get_tree(self) -> dict[str, str]:
-        """Return a display-oriented tree of the project's task hierarchy."""
-
-        tree = {}
-        for root_id in self.get_roots():
-            self._add_to_tree(root_id, tree, 0)
-        return tree
-
-    def _add_to_tree(self, task_id: str, tree: dict[str, str], level: int) -> None:
-        """Add a task and its descendants to a display tree."""
-        tree[task_id] = (" "*level+task_id)
-        level += 1
-        children = self.get_children(task_id)
-        children.sort()
-
-        for child_id in children:
-            self._add_to_tree(child_id, tree, level)
-
-        

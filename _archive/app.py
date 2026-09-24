@@ -6,7 +6,7 @@ from planscript.model.project import ValidationError
 from planscript.cli import display
 from planscript.engine.scheduler import Scheduler
 from planscript.tests import test_projects
-from planscript.parser.parser import Parser, ParseError
+from planscript.engine.parser import Parser, ParseError
 from planscript.serializer.plan_serializer import PlanSerializer
 from planscript.cli.gantt import render
 

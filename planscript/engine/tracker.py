@@ -73,8 +73,17 @@ class Invoice:
             raise ValidationError(f"Amount already allocated to task")
     
     def validate(self):
-        if not sum(self.allocations.values()) == self.invoice_amount:
-            raise ValidationError(f"Invoice total does not match allocations")
+        allocation_total = sum(self.allocations.values(), Decimal("0"))
+        if allocation_total != self.invoice_amount:
+            raise ValidationError(f"Invoice total does not match allocations:\n {self}")
+        # TODO add credits/adjustments?
+        if self.invoice_amount < 0:
+            raise ValidationError(f"Invoice amount cannot be negative:\n {self}")
+
+        for task_id, amount in self.allocations.items():
+            if amount <=0:
+                raise ValidationError(f"Allocation must be positive: {task_id}\n{Invoice}")
+                
 
     def __str__(self):
         str = f"INVOICE [{self.invoice_date}] - ${self.invoice_amount}\n"
@@ -224,7 +233,13 @@ class Tracker:
 
         return cost
 
-
+    def total_actual_cost(self, current_date=None) -> Decimal:
+        total_cost = Decimal("0")
+        for task_id in self.hierarchy.get_roots():
+            cost = self.actual_cost(task_id, current_date)
+            if cost is not None:
+                total_cost += cost
+        return total_cost
 
     def add_task_event(self, task_event:TaskEvent):
 

@@ -10,7 +10,7 @@ from planscript.cli import display
 from planscript.engine.budgeter import Budgeter
 from planscript.engine.scheduler import Scheduler
 from planscript.engine.reporter import ReportBuilder
-from planscript.parser.parser import Parser
+from planscript.engine.parser import Parser
 from planscript.cli.gantt import render_gantt
 
 
@@ -125,7 +125,7 @@ def budget_command(file_path: Path, as_of:date) -> int:
     project.budget = Budgeter().calculate(project)
     display.view_project_header(project)
     display.view_budget(project)
-    display.view_cost_actuals(project)
+    display.view_cost_actuals(project, as_of)
 
     return 0
 

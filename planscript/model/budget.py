@@ -54,3 +54,6 @@ class Budget:
             if amount is not None:
                 total += amount
         return total
+
+    def get(self, task_id) -> Decimal | None:
+        return self.amounts.get(task_id)

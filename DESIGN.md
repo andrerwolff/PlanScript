@@ -73,7 +73,7 @@ wired into the CLI; see `planscript/serializer/`.)
 | `planscript/__main__.py` | Module entry point for `python -m planscript`. |
 | `planscript/app.py` | Argument parsing, subcommands, exit codes, error reporting. |
 | `planscript/exceptions.py` | `ParseError`, `ValidationError`, `SchedulingError`, `BudgetingError`. |
-| `planscript/parser/parser.py` | Line-oriented parser: `.plan` text → `Project`. |
+| `planscript/engine/parser.py` | Line-oriented parser: `.plan` text → `Project`. |
 | `planscript/model/project.py` | `Project` aggregate root and project-level validation. |
 | `planscript/model/task.py` | `Task` (number, name, duration, budget, metadata). |
 | `planscript/model/dependency.py` | `Dependency`, `DependencyType`, `DependencyGraph`. |
@@ -89,7 +89,7 @@ wired into the CLI; see `planscript/serializer/`.)
 | `planscript/cli/display.py` | Table rendering, schedule/budget views, legacy interactive menus. |
 | `planscript/cli/gantt.py` | Textual Gantt rendering. |
 | `planscript/serializer/plan_serializer.py` | `Project` → `.plan` text. Incomplete; not wired into the CLI. |
-| `planscript/tests/` | `unittest` suite (170 tests) plus shared project fixtures. |
+| `planscript/tests/` | `unittest` suite (180 tests) plus shared project fixtures. |
 | `_archive/` | Superseded interactive CLI and the original standalone invoice model. |
 
 ## Model
@@ -154,8 +154,10 @@ cycle.
 ### `TaskHierarchy`
 
 Derived purely from task numbers: `1.2.3` belongs to `1.2` when that task
-exists. If an implied parent does not exist, the task is treated as a root so
-projects need not declare every level. This is separate from the dependency
+exists. When an implied parent does not exist, the task attaches to its
+nearest existing ancestor — with `1` present but `1.2` absent, `1.2.3` is a
+child of `1` — so projects need not declare every level; a task with no
+existing ancestor is a root. This is separate from the dependency
 graph. API: `get_parent`, `get_children`, `get_roots`, `get_leaves`,
 `get_leaf_ids`, `has_children`, `is_summary`, `get_descendants`,
 `get_ancestors`, `get_tree`.
@@ -201,9 +203,11 @@ are).
 ### `Analyzer` (derived)
 
 `Analyzer(project, as_of)` computes `start_variance`, `finish_variance`,
-`duration_variance`, `task_variance`, `project_actual_start`, and
-`project_progress` (duration-weighted percent complete across leaf tasks).
-Positive variance means later than planned.
+`duration_variance`, `task_variance`, `cost_variance` (actual cost minus
+resolved budget for one task), `total_cost_variance` (project actual minus
+budget total), `project_actual_start`, and `project_progress`
+(duration-weighted percent complete across leaf tasks). Schedule variance is
+positive when later than planned; cost variance is positive when over budget.
 
 ## Engines
 

@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from planscript.exceptions import   ValidationError, ParseError
 from planscript.engine.tracker import   TaskEvent, Tracker, EventDirective, TaskStatus
-from planscript.parser.parser import Parser
+from planscript.engine.parser import Parser
 
 class ValidateTracker(unittest.TestCase):
     def setUp(self):
@@ -491,3 +491,59 @@ class ValidateActualCost(unittest.TestCase):
         self.assertEqual(project.tracker.actual_cost("1", self.as_of), Decimal("200"))
         self.assertEqual(project.tracker.actual_cost("2", self.as_of), Decimal("100"))
         self.assertEqual(rolled_up, invoiced)
+
+class ValidateInvoiceDates(unittest.TestCase):
+    """Invoice dates are validated against the project's start date.
+
+    A plan with no `start:` date has nothing to compare against, so any
+    invoice date is accepted.
+    """
+
+    def setUp(self):
+        self.parser = Parser()
+
+    def test_invoice_before_project_start_is_rejected(self):
+        plan = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-01
+
+        task 1.1 First 5d
+
+        ;Tracking
+        2025-12-01 invoice $100
+            1.1 $100
+        """)
+
+        with self.assertRaises(ValidationError):
+            self.parser.parse(plan)
+
+    def test_invoice_on_project_start_is_accepted(self):
+        plan = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-01
+
+        task 1.1 First 5d
+
+        ;Tracking
+        2026-01-01 invoice $100
+            1.1 $100
+        """)
+
+        project = self.parser.parse(plan)
+
+        self.assertEqual(len(project.tracker.invoice_events), 1)
+
+    def test_invoice_without_project_start_is_accepted(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1.1 First 5d
+
+        ;Tracking
+        2026-06-01 invoice $100
+            1.1 $100
+        """)
+
+        project = self.parser.parse(plan)
+
+        self.assertEqual(len(project.tracker.invoice_events), 1)

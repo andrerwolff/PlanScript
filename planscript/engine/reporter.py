@@ -84,6 +84,7 @@ class ProjectReport:
     late_tasks: list[TaskReport]
     upcoming_deadlines: list[TaskReport]
     upcoming_starts: list[TaskReport]
+    charged_tasks: list[TaskReport]
     look_ahead: timedelta
 
     project_budget: ProjectBudgetReport | None = None
@@ -120,6 +121,8 @@ class ProjectReport:
         str += (f"Upcoming Tasks (+{self.look_ahead.days}d)\n")
         for t_report in self.upcoming_starts:
             str += (f"    {t_report} starts on {t_report.planned_start}\n")
+        for t_report in self.charged_tasks:
+            str += (f"    {t_report.task_id} - ${t_report.cost_variance}\n")
         return str
 
 @dataclass
@@ -152,6 +155,7 @@ class ReportBuilder:
             late_tasks=summary["lates"],
             upcoming_deadlines=summary["deadlines"],
             upcoming_starts=summary["starts"],
+            charged_tasks=summary["charged"],
             look_ahead=self.look_ahead
         )
 
@@ -185,10 +189,14 @@ class ReportBuilder:
         lates = []
         upcoming_deadlines = []
         upcoming_starts = []
+        charged_tasks = []
 
         for task_id in self.project.schedule.hierarchy.get_leaf_ids():
             state = self.project.tracker.get_task_state(task_id)
             report = self._task_report(analysis, task_id, state, as_of)
+
+            if self.project.budget.get(task_id) is not None:
+                charged_tasks.append(report)
 
             if report.condition is ScheduleCondition.OVERDUE:
                 overdues.append(report)
@@ -207,7 +215,8 @@ class ReportBuilder:
                         upcoming_starts.append(report)
 
         summary = {"overdues": overdues, "blocked": blocked, "lates": lates, 
-                   "deadlines": upcoming_deadlines, "starts": upcoming_starts}
+                   "deadlines": upcoming_deadlines, "starts": upcoming_starts,
+                   "charged": charged_tasks}
         return summary
 
     def _task_report(self, analysis, task_id, state, as_of) -> TaskReport:

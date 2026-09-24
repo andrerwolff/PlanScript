@@ -9,7 +9,7 @@ from planscript.exceptions import BudgetingError
 from planscript.model.project import Project
 from planscript.model.task import Task
 from planscript.tests import test_projects
-from planscript.parser.parser import Parser
+from planscript.engine.parser import Parser
 
 
 class TestBudgeterExamples(unittest.TestCase):

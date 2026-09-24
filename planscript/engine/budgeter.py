@@ -1,4 +1,3 @@
-
 from decimal import Decimal, ROUND_FLOOR
 
 from planscript.exceptions import BudgetingError
@@ -26,7 +25,7 @@ class Budgeter:
         Budgeting proceeds through these stages:
 
         1. Build the task hierarchy.
-        2. Resolve explicit budgets and percentage weights top-down.
+        2. Assign explicit budgets, then resolve percentage weights top-down.
         3. Roll up summary tasks that have no budget of their own.
 
         Raises:
@@ -38,89 +37,126 @@ class Budgeter:
             raise BudgetingError("Project has no tasks to budget.")
 
         hierarchy = TaskHierarchy(project.tasks)
-        amounts = self._allocate(project, hierarchy, hierarchy.get_roots(), None, {})
+        amounts = {}
+        self._calculate_explicits(project, hierarchy, amounts)
+        self._calculate_weights(project, hierarchy, amounts)
         unallocated = self._roll_up(project, hierarchy, amounts)
 
         return Budget(
-            hierarchy = hierarchy,
-            amounts = amounts,
-            explicit = {task_id: task.budget
-                        for task_id, task in project.tasks.items()
-                        if task.budget is not None},
-            weights = {task_id: task.budget_wt
-                       for task_id, task in project.tasks.items()
-                       if task.budget_wt is not None},
-            unallocated = unallocated)
+            hierarchy=hierarchy,
+            amounts=amounts,
+            explicit={task_id: task.budget
+                      for task_id, task in project.tasks.items()
+                      if task.budget is not None},
+            weights={task_id: task.budget_wt
+                     for task_id, task in project.tasks.items()
+                     if task.budget_wt is not None},
+            unallocated=unallocated)
 
-    def _allocate(self, project, hierarchy, task_ids, base, amounts) -> dict[str, Decimal]:
-        """Resolve one level of siblings against their parent's allocation base.
+    def _calculate_explicits(self, project, hierarchy, amounts) -> None:
+        """Assign each task its authored explicit budget.
 
-        A task's allocation base is the resolved amount of its nearest budgeted
-        ancestor. Weighted siblings share that base by percentage, while an
-        explicitly budgeted task keeps its authored amount and replaces the base
-        for its own descendants.
+        Summary rollups and weighted shares are resolved by later passes.
         """
 
-        for task_id in task_ids:
+        for task_id in hierarchy.get_bottom_up_order():
             task = project.tasks[task_id]
+
+            # An explicitly budgeted task keeps its authored budget.
             if task.budget is not None:
                 amounts[task_id] = task.budget
 
-        weighted_ids = [task_id for task_id in task_ids
-                        if project.tasks[task_id].budget_wt is not None]
+    def _calculate_weights(self, project, hierarchy: TaskHierarchy, amounts) -> None:
+        """Distribute weighted children from their level's allocation base.
 
-        if weighted_ids:
-            amounts.update(self._distribute(project, base, weighted_ids))
-
-        for task_id in task_ids:
-            child_base = amounts.get(task_id)
-            if child_base is None:
-                child_base = base
-
-            self._allocate(project, hierarchy, hierarchy.get_children(task_id), child_base, amounts)
-
-        return amounts
-
-    def _distribute(self, project, base, task_ids) -> dict[str, Decimal]:
-        """Share a parent's amount between weighted children, in whole cents.
-
-        Each child receives its percentage of the base floored to cents, and the
-        cents left over are awarded to the largest fractional shares, in task
-        number order. The children therefore sum to exactly the parent's amount,
-        which a share that does not divide into whole cents (such as 10% of
-        $45000.25) would otherwise not do.
-
-        Percentage weights are expected to total 100%, which Project validation
-        enforces.
+        A level draws from its own resolved amount when it has one, otherwise
+        from the nearest resolved ancestor's amount, so weighted tasks below
+        an unbudgeted summary still draw from the nearest budgeted ancestor.
 
         Raises:
-            BudgetingError: If the siblings have no budgeted ancestor to draw on.
+            BudgetingError: If weighted siblings have no budgeted ancestor to
+                draw on, mix weighted and non-weighted children, or do not
+                total 100%.
         """
 
-        if base is None:
-            raise BudgetingError(
-                f"Task '{task_ids[0]}' has a weighted budget allocation but "
-                f"no budgeted ancestor to allocate from.")
+        bases = {}
+        for task_id in hierarchy.get_top_down_order():
+            # This level's base: its own resolved amount, else the inherited one.
+            base = amounts.get(task_id)
+            if base is None:
+                base = bases.get(hierarchy.get_parent(task_id))
+            bases[task_id] = base
 
-        total = self._to_cents(base)
+            task = project.tasks[task_id]
+
+            if task.budget_wt is not None and task_id not in amounts:
+                # A weighted root can never draw from an ancestor.
+                raise BudgetingError(
+                    f"Task '{task_id}' has a weighted budget allocation but "
+                    f"no budgeted ancestor to allocate from.")
+
+            children = hierarchy.get_children(task_id)
+
+            weighted = []
+            for child_id in children:
+                child = project.tasks[child_id]
+                if child.budget_wt is not None:
+                    weighted.append((child_id, child.budget_wt))
+
+            if not weighted:
+                continue
+
+            if len(weighted) != len(children):
+                raise BudgetingError(
+                    f"Task '{task_id}' mixes weighted and non-weighted children.")
+
+            total_weight = Decimal("0")
+            for child_id, child_wt in weighted:
+                total_weight += child_wt
+
+            if total_weight != Decimal("100"):
+                raise BudgetingError(
+                    f"Weighted children of '{task_id}' must total 100%.")
+
+            if base is None:
+                raise BudgetingError(
+                    f"Task '{weighted[0][0]}' has a weighted budget allocation "
+                    f"but no budgeted ancestor to allocate from.")
+
+            allocated = self._allocate_weighted(base, weighted)
+            for child_id, amount in allocated.items():
+                amounts[child_id] = amount
+
+    def _allocate_weighted(self, parent_budget, weighted) -> dict[str, Decimal]:
+        total_cents = self._to_cents(parent_budget)
+
         shares = []
-        allocated = 0
+        allocated_cents = 0
 
-        for task_id in task_ids:
-            weight = project.tasks[task_id].budget_wt
-            exact = base * weight / Decimal("100")
-            cents = self._to_cents(exact)
-            allocated += cents
+        for task_id, weight in weighted:
+            exact_amount = parent_budget * weight / Decimal("100")
+            cents = self._to_cents(exact_amount)
+            remainder = (exact_amount - Decimal(cents)/Decimal("100"))
 
-            shares.append([task_id, exact - Decimal(cents), cents])
+            shares.append({"task_id": task_id,
+                           "remainder": remainder,
+                            "cents": cents})
+
+            allocated_cents += cents
+
+        remaining = total_cents - allocated_cents
 
         # Largest fractional share first, breaking ties by task number.
-        shares.sort(key=lambda share: (-share[1], share[0]))
+        shares.sort(key=lambda share: (-share["remainder"], share["task_id"]))
 
-        for index in range(total - allocated):
-            shares[index % len(shares)][2] += 1
+        for index in range(remaining):
+            shares[index]["cents"] += 1
 
-        return {share[0]: Decimal(share[2]) / 100 for share in shares}
+        amounts = {}
+        for share in shares:
+            amounts[share["task_id"]] = (Decimal(share["cents"]) / Decimal("100"))
+
+        return amounts
 
     @staticmethod
     def _to_cents(amount: Decimal) -> int:
@@ -162,4 +198,3 @@ class Budgeter:
 
         unallocated.sort()
         return unallocated
-        

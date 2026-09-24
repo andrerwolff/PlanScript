@@ -109,17 +109,21 @@ class Analyzer:
         return actual - planned
 
     def cost_variance(self, task_id):
-
-        budget = self.project.budget.amounts[task_id]
-        if budget is None:
-            return None
-        actual = self.project.tracker.actual_cost(task_id)
-
-        if actual is None:
+        budget = self.project.budget.get(task_id)
+        actual = self.project.tracker.actual_cost(task_id, self.as_of)
+        if budget is None or actual is None:
             return None
 
         return actual - budget
-        
+
+    def total_cost_variance(self):
+        actual = self.project.tracker.total_actual_cost(self.as_of)
+        budget = self.project.budget.total
+
+        if actual is None or budget is None:
+            return None
+
+        return actual - budget    
 
     def task_variance(self, task_id):
         return TaskVariance(

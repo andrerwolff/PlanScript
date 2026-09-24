@@ -377,3 +377,8 @@ class Project:
 
         for invoice in self.tracker.invoice_events:
             invoice.validate()
+            for task_id in invoice.allocations:
+                if task_id not in self.tasks:
+                    raise ValidationError(f"Invoice allocation references unknown task '{task_id}\n{invoice}")
+            if self.start_date is not None and invoice.invoice_date < self.start_date:
+                raise ValidationError(f"Invoice date is before project start:\n{invoice}")

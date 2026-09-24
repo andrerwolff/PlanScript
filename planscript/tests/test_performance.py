@@ -5,7 +5,9 @@ from datetime import date, timedelta
 from planscript.exceptions import   ValidationError, ParseError
 from planscript.engine.scheduler import Scheduler
 from planscript.engine.analyzer import Analyzer
-from planscript.parser.parser import Parser
+from planscript.engine.parser import Parser
+from planscript.engine.budgeter import Budgeter
+from decimal import Decimal
 
 class ValidatePerformance(unittest.TestCase):
     def setUp(self):
@@ -506,3 +508,107 @@ class ValidatePerformance(unittest.TestCase):
         duration = project.tracker.actual_duration("1", date(2026, 10, 10))
 
         self.assertEqual(duration, timedelta(days=5))
+
+class ValidateCostVariance(unittest.TestCase):
+    """Cost variance compares actual invoiced cost against the budget.
+
+    Variance is actual minus budget, so positive means over budget. Both the
+    per-task and total figures are measured as of a date; invoices after that
+    date are excluded.
+    """
+
+    def setUp(self):
+        self.parser = Parser()
+        self.as_of = date(2026, 6, 30)
+
+    def _budgeted(self, plan):
+        project = self.parser.parse(plan)
+        project.budget = Budgeter().calculate(project)
+        return project
+
+    def test_task_cost_variance_is_actual_minus_budget(self):
+        plan = textwrap.dedent("""\
+                project: Test
+                    start: 2026-01-01
+
+                task 1 Summary
+                task 1.1 First 5d
+                    budget $100
+                task 1.2 Second 5d
+                    budget $50
+
+                ;Tracking
+                2026-01-10 invoice $60
+                    1.1 $60
+                """)
+
+        project = self._budgeted(plan)
+        analysis = Analyzer(project, self.as_of)
+
+        self.assertEqual(analysis.cost_variance("1.1"), Decimal("-40"))
+        self.assertEqual(analysis.cost_variance("1.2"), Decimal("-50"))
+        self.assertEqual(analysis.cost_variance("1"), Decimal("-90"))
+
+    def test_total_cost_variance_is_actual_minus_budget(self):
+        plan = textwrap.dedent("""\
+                project: Test
+                    start: 2026-01-01
+
+                task 1 Summary
+                task 1.1 First 5d
+                    budget $100
+                task 1.2 Second 5d
+                    budget $50
+
+                ;Tracking
+                2026-01-10 invoice $60
+                    1.1 $60
+                """)
+
+        project = self._budgeted(plan)
+        analysis = Analyzer(project, self.as_of)
+
+        self.assertEqual(analysis.total_cost_variance(), Decimal("-90"))
+
+    def test_cost_variance_is_none_without_a_budget(self):
+        plan = textwrap.dedent("""\
+                project: Test
+                    start: 2026-01-01
+
+                task 1.1 First 5d
+
+                ;Tracking
+                2026-01-10 invoice $60
+                    1.1 $60
+                """)
+
+        project = self._budgeted(plan)
+        analysis = Analyzer(project, self.as_of)
+
+        self.assertIsNone(analysis.cost_variance("1.1"))
+
+    def test_cost_variance_excludes_invoices_after_as_of(self):
+        plan = textwrap.dedent("""\
+                project: Test
+                    start: 2026-01-01
+
+                task 1 Summary
+                task 1.1 First 5d
+                    budget $100
+
+                ;Tracking
+                2026-01-10 invoice $60
+                    1.1 $60
+                2026-07-15 invoice $40
+                    1.1 $40
+                """)
+
+        project = self._budgeted(plan)
+
+        june = Analyzer(project, date(2026, 6, 30))
+        august = Analyzer(project, date(2026, 8, 1))
+
+        self.assertEqual(june.cost_variance("1.1"), Decimal("-40"))
+        self.assertEqual(august.cost_variance("1.1"), Decimal("0"))
+        self.assertEqual(june.total_cost_variance(), Decimal("-40"))
+        self.assertEqual(august.total_cost_variance(), Decimal("0"))

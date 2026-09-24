@@ -58,6 +58,33 @@ class TestTaskHierarchy(unittest.TestCase):
             ["1", "2"]
         )
 
+    def test_missing_parent_attaches_to_nearest_existing_ancestor(self):
+        tasks = {
+            "1": object(),
+            "1.2.3": object(),
+            "1.2.3.4": object(),
+        }
+        hierarchy = TaskHierarchy(tasks)
+
+        # 1.2 is absent, so 1.2.3 attaches to 1.
+        self.assertEqual(hierarchy.get_parent("1.2.3"), "1")
+        self.assertEqual(hierarchy.get_children("1"), ["1.2.3"])
+
+        # 1.2.3 exists, so its child keeps its immediate parent.
+        self.assertEqual(hierarchy.get_parent("1.2.3.4"), "1.2.3")
+
+        self.assertEqual(hierarchy.get_roots(), ["1"])
+
+    def test_task_without_any_existing_ancestor_is_a_root(self):
+        tasks = {
+            "1.1": object(),
+            "9": object(),
+        }
+        hierarchy = TaskHierarchy(tasks)
+
+        self.assertIsNone(hierarchy.get_parent("1.1"))
+        self.assertEqual(hierarchy.get_roots(), ["1.1", "9"])
+
     def test_has_children(self):
         self.assertTrue(
             self.hierarchy.has_children("1")

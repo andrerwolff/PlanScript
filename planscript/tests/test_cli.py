@@ -12,7 +12,7 @@ from io import StringIO
 
 from planscript import app
 from planscript.exceptions import ValidationError
-from planscript.parser.parser import Parser
+from planscript.engine.parser import Parser
 
 
 ROOT = Path(__file__).resolve().parents[2]

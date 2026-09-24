@@ -312,6 +312,13 @@ allocations are.
 * Allocations must sum exactly to the invoice amount or validation fails.
 * A task may be allocated at most once per invoice.
 * An allocation line before any invoice is a parse error.
+* An allocation may target a summary task; a charge made directly to a summary
+  is additional to the charges of its descendants.
+* An invoice dated before the project's `start:` date fails validation. When
+  the project has no `start:` date there is nothing to compare against, so any
+  invoice date is accepted.
+* An invoice dated after a report's as-of date is excluded from actual costs;
+  it is not an error.
 
 ## Tracking
 
