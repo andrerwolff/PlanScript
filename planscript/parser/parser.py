@@ -309,7 +309,7 @@ class Parser:
             match = self.TRACKING_ENTRY_PATTERN.match(line)
             if match:
                 if tracking_date is None:
-                    raise ParseError(f"Line {line_number}: Tracking entry has no date.")
+                    raise ParseError(f"Line {line_number}: Tracking entry has no date. {line}")
 
                 task_id = match.group("id")
                 full_directive = match.group("directive")

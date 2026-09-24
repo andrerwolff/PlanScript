@@ -1,12 +1,15 @@
 import unittest
 from datetime import timedelta
 from decimal import Decimal
+import textwrap
+from pathlib import Path
 
 from planscript.engine.budgeter import Budgeter
 from planscript.exceptions import BudgetingError
 from planscript.model.project import Project
 from planscript.model.task import Task
 from planscript.tests import test_projects
+from planscript.parser.parser import Parser
 
 
 class TestBudgeterExamples(unittest.TestCase):
@@ -166,6 +169,13 @@ class TestBudgeterEdges(unittest.TestCase):
         self.assertEqual(project.tasks["2"].budget, Decimal("250000"))
         self.assertIsNone(project.tasks["2.1.1"].budget)
         self.assertEqual(project.tasks["2.1.1"].budget_wt, Decimal("40"))
+
+    def test_budget_is_parsed(self):
+        file = Path("Valid.plan")
+        project = Parser().parse(file.read_text(encoding="utf-8"))
+        project.budget = Budgeter().calculate(project)
+
+        self.assertEqual(project.budget.amounts, {"1": Decimal('1234.00')})
 
 
 if __name__ == "__main__":

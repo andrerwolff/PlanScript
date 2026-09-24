@@ -2,6 +2,7 @@ import argparse
 import sys
 from datetime import date, timedelta
 from pathlib import Path
+from decimal import Decimal
 
 from planscript.model import Project
 from planscript.exceptions import ParseError, SchedulingError, ValidationError, BudgetingError
@@ -112,6 +113,7 @@ def status_command(file_path:Path, as_of:date, look_ahead:int) -> int:
     """Display project status."""
     project = load_project(file_path)
     project.schedule = Scheduler().calculate(project)
+    project.budget = Budgeter().calculate(project)
     report = ReportBuilder(project, as_of, timedelta(days=look_ahead)).build()
     print(report.render_text())
 
@@ -123,6 +125,7 @@ def budget_command(file_path: Path, as_of:date) -> int:
     project.budget = Budgeter().calculate(project)
     display.view_project_header(project)
     display.view_budget(project)
+    display.view_cost_actuals(project)
 
     return 0
 

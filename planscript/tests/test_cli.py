@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import textwrap
 from collections import namedtuple
 from pathlib import Path
 from unittest.mock import patch
@@ -15,7 +16,15 @@ from planscript.parser.parser import Parser
 
 
 ROOT = Path(__file__).resolve().parents[2]
-VALID_PLAN = "project: Example\n    start: 2026-09-01\ntask 1 Work 2d\n"
+
+VALID_PLAN = textwrap.dedent("""\
+project: Example
+    start: 2026-09-01
+    
+task 1 Work 2d
+    budget $1234.00
+""")
+
 CYCLE_PLAN = (
     "project: Cycle\n    start: 2026-09-01\n"
     "task 1 First 1d\n    depends 2\n"

@@ -109,6 +109,7 @@ class Analyzer:
         return actual - planned
 
     def cost_variance(self, task_id):
+
         budget = self.project.budget.amounts[task_id]
         if budget is None:
             return None
