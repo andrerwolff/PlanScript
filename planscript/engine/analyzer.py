@@ -143,7 +143,7 @@ class Analyzer:
             return min(actual_starts)
         return None
 
-    def project_progress(self) -> float | None:
+    def actual_project_progress(self) -> float | None:
         num = 0
         denom = 0
         for task_id in self.project.schedule.hierarchy.get_leaf_ids():
@@ -158,8 +158,35 @@ class Analyzer:
             if duration <= 0:
                 continue
 
-            num += duration * (state.percent_complete) 
+            num += duration * (state.percent_complete / 100) 
             denom += duration
         if denom:
             return num/denom
         return None
+
+    def planned_project_progress(self) -> float | None:
+        total_duration = timedelta(0)
+        planned_duration = timedelta(0)
+
+        for task_id in self.project.schedule.hierarchy.get_leaf_ids():
+            task = self.project.tasks[task_id]
+
+            duration = task.duration
+            start = self.project.schedule.start_dates[task_id]
+            finish = self.project.schedule.finish_dates[task_id]
+
+            total_duration += duration
+            if self.as_of >= finish:
+                planned_duration += duration
+            elif self.as_of > start:
+                planned_duration += (self.as_of - start)
+
+        if total_duration == timedelta(0):
+            return None
+
+        return planned_duration / total_duration
+
+    def project_consumed_cost(self) -> float | None:
+        total_actual_cost = self.project.tracker.total_actual_cost()
+        total_planned_budget = self.project.budget.total
+        return total_actual_cost / total_planned_budget

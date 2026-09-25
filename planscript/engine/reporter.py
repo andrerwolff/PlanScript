@@ -7,6 +7,7 @@ from planscript.model.project import Project
 from planscript.engine.tracker import TaskStatus, TaskState, Invoice
 from planscript.engine.analyzer import Analyzer
 from planscript.exceptions import SchedulingError
+from planscript.cli.display import _format_currency
 
 class ProjectStatus(Enum):
     """Derived status of a project based on its tasks."""
@@ -41,13 +42,14 @@ class ProjectScheduleReport:
     schedule_variance: timedelta | None
 
     def render_text(self):
-        str = (f"\nSchedule Report\n"
+        str = (f"--------------------------------------"
+              f"\nSchedule Report\n"
               f"--------------------------------------\n"
               f"    Planned Start: {self.planned_start}\n"
               f"    Planned Finish: {self.planned_finish}\n"
               f"    Actual Start: {self.actual_start}\n"
               f"    Forecast Finish: {self.forecast_finish}\n"
-              f"    Schedule Variance: {self.schedule_variance}\n")
+              f"    Forecast Variance: {self.schedule_variance}\n")
         return str
     
 @dataclass
@@ -58,12 +60,13 @@ class ProjectBudgetReport:
     project_variance: Decimal
 
     def render_text(self):
-        str = (f"\nBudget Report\n"
+        str = (f"--------------------------------------"
+              f"\nBudget Report\n"
               f"--------------------------------------\n"
-              f"    Planned: {self.project_budget}\n"
-              f"    Actual: {self.project_invoiced}\n"
-              f"    Remaining: {self.project_remaining}\n"
-              f"    Variance: {self.project_variance}\n")
+              f"    Planned Budget: {self.project_budget}\n"
+              f"    Actual Cost: {self.project_invoiced}\n"
+              f"    Remaining Budget: {self.project_remaining}\n"
+              f"    Project Cost Variance: {self.project_variance}\n")
         return str
 
 @dataclass
@@ -73,11 +76,12 @@ class ProjectProgressReport:
     actual_effort: float
 
     def render_text(self):
-        str = (f"\nProgress Report\n"
+        str = (f"--------------------------------------"
+              f"\nProgress Report\n"
               f"--------------------------------------\n"
-              f"    Planned Progress: {self.planned_progress}\n"
-              f"    Actual Progress: {self.actual_progress}\n"
-              f"    Effort Consumed: {self.actual_effort}\n")
+              f"    Planned Progress: {self.planned_progress:.1%}\n"
+              f"    Actual Progress: {self.actual_progress:.1%}\n"
+              f"    Budget Consumed: {self.actual_effort:.1%}\n")
         return str    
 
 @dataclass
@@ -114,33 +118,27 @@ class ProjectReport:
     name: str
     status: ProjectStatus
     as_of: date
-    planned_start: date | None
-    planned_finish: date | None
-    planned_duration: timedelta | None
-    actual_start: date | None
-    progress: float | None
-    overdue_tasks: list[TaskReport]
-    blocked_tasks: list[TaskReport]
-    late_tasks: list[TaskReport]
-    upcoming_deadlines: list[TaskReport]
-    upcoming_starts: list[TaskReport]
-    charged_tasks: list[TaskReport]
-    look_ahead: timedelta
-
-    project_budget: ProjectBudgetReport | None = None
+    schedule_report: ProjectScheduleReport | None = None
+    budget_report: ProjectBudgetReport | None = None
+    progress_report: ProjectProgressReport | None = None
+    #overdue_tasks: list[TaskReport]
+    #blocked_tasks: list[TaskReport]
+    #late_tasks: list[TaskReport]
+    #upcoming_deadlines: list[TaskReport]
+    #upcoming_starts: list[TaskReport]
+    #charged_tasks: list[TaskReport]
+    #look_ahead: timedelta
 
     def render_text(self):
         str = (f"\nStatus Report as-of {self.as_of}\n"
               f"=======================================\n"
               f"Project Name: {self.name}\n\n"
-              f"    Status: {self.status.value}\n\n"
-              f"    Planned Start: {self.planned_start}\n"
-              f"    Planned Finish: {self.planned_finish}\n"
-              f"    Planned Duration: {self.planned_duration.days}d\n"
-              f"    Actual Start: {self.actual_start}\n"
-              f"    Progress: {self.progress:.2g}%\n\n")
-        self.project_budget.render_text()
-        str += f"Overdue Tasks\n"
+              f"    Status: {self.status.value}\n\n")
+        str += self.schedule_report.render_text()
+        str += self.budget_report.render_text()
+        str += self.progress_report.render_text()
+
+        """str += f"Overdue Tasks\n"
         for t_report in self.overdue_tasks:
             detail = "" if t_report.days_overdue is None else f" by {t_report.days_overdue.days}d"
             str += (f"    {t_report} is overdue{detail}\n")
@@ -163,7 +161,7 @@ class ProjectReport:
         for t_report in self.upcoming_starts:
             str += (f"    {t_report} starts on {t_report.planned_start}\n")
         for t_report in self.charged_tasks:
-            str += (f"    {t_report.task_id} - ${t_report.cost_variance}\n")
+            str += (f"    {t_report.task_id} - ${t_report.cost_variance}\n")"""
         return str
 
 @dataclass
@@ -179,27 +177,24 @@ class ReportBuilder:
                 "No project start date is available for date projection."
             )
         analysis = Analyzer(self.project, self.as_of)
-        summary = self._task_summary(analysis, self.as_of, self.look_ahead)
+        #summary = self._task_summary(analysis, self.as_of, self.look_ahead)
 
 
         return ProjectReport(
             name=self.project.name,
             status=self._project_status(),
             as_of=self.as_of,
-            planned_start=self.project.start_date,
-            planned_finish=self.project.finish_date,
-            planned_duration=self.project.schedule.duration,
-            actual_start=analysis.project_actual_start(),
-            progress=analysis.project_progress(),
-            overdue_tasks=summary["overdues"],
-            blocked_tasks=summary["blocked"],
-            late_tasks=summary["lates"],
-            upcoming_deadlines=summary["deadlines"],
-            upcoming_starts=summary["starts"],
-            charged_tasks=summary["charged"],
-            look_ahead=self.look_ahead
-            project_budget=ProjectBudgetReport()
+            schedule_report=self._project_schedule_report(analysis),
+            budget_report=self._project_budget_report(analysis),
+            progress_report=self._project_progress_budget(analysis),
         )
+            #blocked_tasks=summary["blocked"],
+            #late_tasks=summary["lates"],
+            #upcoming_deadlines=summary["deadlines"],
+            #upcoming_starts=summary["starts"],
+            #charged_tasks=summary["charged"],
+            #look_ahead=self.look_ahead
+
 
     def _project_status(self) -> ProjectStatus:
         statuses = set()
@@ -332,9 +327,27 @@ class ReportBuilder:
         
         return ScheduleCondition.ON_SCHEDULE
 
-    def _budget_condition(self, task_id, state, as_of) -> BudgetCondition:
-        pass
+    def _project_schedule_report(self, analysis:Analyzer) -> ProjectScheduleReport:
 
+        return ProjectScheduleReport(planned_start=self.project.start_date,
+                                     planned_finish=self.project.finish_date,
+                                     planned_duration=self.project.schedule.duration,
+                                     actual_start=analysis.project_actual_start(),
+                                     forecast_finish=None,
+                                     schedule_variance=None)
+
+    def _project_budget_report(self, analysis:Analyzer) -> ProjectBudgetReport:
+
+        return ProjectBudgetReport(project_budget=_format_currency(self.project.budget.total),
+                                    project_invoiced=_format_currency(self.project.tracker.total_actual_cost()),
+                                    project_remaining=_format_currency(-analysis.total_cost_variance()),
+                                    project_variance=None)
+
+    def _project_progress_budget(self, analysis:Analyzer) -> ProjectProgressReport:
+
+        return ProjectProgressReport(planned_progress=analysis.planned_project_progress(),
+                                     actual_progress=analysis.actual_project_progress(),
+                                     actual_effort=analysis.project_consumed_cost())
 
 
     def _has_incomplete_predecessors(self, task_id):
