@@ -143,6 +143,21 @@ class Analyzer:
             return min(actual_starts)
         return None
 
+    def actual_progress(self, task_id) -> float | None:
+        task = self.project.tasks[task_id]
+        state = self.project.tracker.get_task_state(task_id)
+
+        if task.duration is None:
+            return None
+        duration = task.duration.total_seconds()
+        if duration <= 0:
+            return None
+        num = duration * (state.percent_complete / 100)
+        denom = duration
+        if denom:
+            return num/denom
+        return None
+
     def actual_project_progress(self) -> float | None:
         num = 0
         denom = 0
@@ -164,6 +179,27 @@ class Analyzer:
             return num/denom
         return None
 
+    def planned_progress(self, task_id) -> float | None:
+        print(task_id)
+        planned_duration = timedelta(0)
+        
+        task = self.project.tasks[task_id]
+        duration = task.duration
+        start = self.project.schedule.start_dates[task_id]
+        finish = self.project.schedule.finish_dates[task_id]
+
+        if self.as_of >= finish:
+            planned_duration = duration
+        elif self.as_of > start:
+            planned_duration = (self.as_of - start)
+
+        if duration == timedelta(0):
+            return 1
+        progress = planned_duration / duration
+        if progress is not None:
+            return progress
+        return 1
+        
     def planned_project_progress(self) -> float | None:
         total_duration = timedelta(0)
         planned_duration = timedelta(0)

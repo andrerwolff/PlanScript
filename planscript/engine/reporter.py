@@ -74,21 +74,21 @@ class TaskScheduleReport:
     def render_text(self) -> str:
         status = self.state.status
         text = (f"--------------------------------------"
-              f"\nSchedule Report\n    Status: {self.schedule_condition.value()}" 
+              f"\nSchedule Report    Status: {self.schedule_condition.value}\n" 
               f"--------------------------------------\n"
               f"    Planned Start / Finish: {self.planned_start} / {self.planned_finish}\n"
               f"    Planned Duration: {self.planned_duration}\n")
         if status == TaskStatus.COMPLETED:
             text += (f"    Actual Start / Finish: {self.actual_start} / {self.actual_finish}\n"
-                    f"    Actual Duration (Variance): {self.actual_duration} ({self.duration_variance}d)\n")
+                    f"    Actual Duration (Variance): {self.actual_duration} ({self.duration_variance}d)\n\n")
         elif status in(TaskStatus.IN_PROGRESS, TaskStatus.STARTED):
             text += (f"    Actual Start: {self.actual_start}\n"
                     f"    Forecast Finish: {self.forecast_finish}\n"
-                    f"    Forecast Duration (Variance): {self.forecast_duration} ({self.forecast_variance}d)\n")
+                    f"    Forecast Duration (Variance): {self.forecast_duration} ({self.forecast_variance}d)\n\n")
         if status == TaskStatus.NOT_STARTED:
             text += (f"    Forecast Start (Earliest): {self.forecast_start}\n"
                     f"    Forecast Finish (Earliest): {self.forecast_finish}\n"
-                    f"    Forecast Duration (Variance): {self.forecast_duration} ({self.forecast_variance}d)\n")
+                    f"    Forecast Duration (Variance): {self.forecast_duration} ({self.forecast_variance}d)\n\n")
         return text
     
 @dataclass
@@ -110,19 +110,19 @@ class ProjectBudgetReport:
 
 @dataclass
 class TaskBudgetReport:
-    project_budget: Decimal
-    project_invoiced: Decimal
-    project_remaining: Decimal
-    project_variance: Decimal
+    task_budget: Decimal
+    task_invoiced: Decimal
+    task_remaining: Decimal
+    forcast_budget_variance: Decimal
 
     def render_text(self) -> str:
         text = (f"--------------------------------------"
               f"\nBudget Report\n"
               f"--------------------------------------\n"
-              f"    Planned Budget: {self.project_budget}\n"
-              f"    Actual Cost: {self.project_invoiced}\n"
-              f"    Remaining Budget: {self.project_remaining}\n"
-              f"    Project Cost Variance: {self.project_variance}\n\n")
+              f"    Planned Budget: {self.task_budget}\n"
+              f"    Actual Cost: {self.task_invoiced}\n"
+              f"    Remaining Budget: {self.task_remaining}\n"
+              f"    Forcast Cost Variance: {self.forcast_budget_variance}\n\n")
         return text
 
 @dataclass
@@ -159,11 +159,11 @@ class TaskProgressReport:
 class TaskReport:
     task_id: str
     name: str
-    duration: timedelta | None
-    state: TaskState
-    condition: ScheduleCondition
 
-    schedule_report = _task_schedule_report()
+    schedule_report: TaskScheduleReport
+    budget_report: TaskBudgetReport
+    progress_report: TaskProgressReport
+
     #days_overdue: timedelta | None = None
     #days_late: timedelta | None = None
     #days_waiting: timedelta | None = None
@@ -172,23 +172,14 @@ class TaskReport:
     #root_causes: list[str] = field(default_factory=list)
 
     def render_text(self, report_type) -> str:
-        text = f"{self.task_id} - {self.name} [{self.state.status.value}]\n"
-        if report_type == "schedule":
-            text += (f"    Planned Start: {self.planned_start}\n"
-                    f"    Planned Finish: {self.planned_finish}\n"
-                    f"    Planned Duration: {self.duration}\n\n"
-                    f"    Actual Start: {self.actual_start}\n"
-                    f"    Actual Finish: {self.actual_finish}\n\n"
-                    f"  Schedule Condition: {self.condition}\n"
-                    f"    Start Variance: {self.start_variance}\n"
-                    f"    Finish Variance: {self.finish_variance}\n"
-                    f"    Duration Variance: {self.duration_variance}\n\n"
-                    )
+        text = f"{self.task_id} - {self.name}\n"
+        if "schedule" in report_type:
+            text += self.schedule_report.render_text()
 
-        if report_type == "budget":
-            pass
-        if report_type == "progress":
-            pass
+        if "budget" in report_type:
+            text += self.budget_report.render_text()
+        if "progress" in report_type:
+            text += self.progress_report.render_text()
         return text
     
     def __str__(self):
@@ -223,7 +214,8 @@ class ProjectReport:
         for t_report in self.all_tasks:
             if t_report is None:
                 continue
-            text += t_report.render_text("schedule")
+            text += t_report.render_text(("schedule", "budget", "progress"))
+
 
         """text += f"Overdue Tasks\n"
         for t_report in self.overdue_tasks:
@@ -273,7 +265,7 @@ class ReportBuilder:
             as_of=self.as_of,
             schedule_report=self._project_schedule_report(analysis),
             budget_report=self._project_budget_report(analysis),
-            progress_report=self._project_progress_budget(analysis),
+            progress_report=self._project_progress_report(analysis),
             all_tasks=summary["all"]
         )
             #blocked_tasks=summary["blocked"],
@@ -319,26 +311,28 @@ class ReportBuilder:
 
         for task_id in self.project.schedule.hierarchy.get_leaf_ids():
             state = self.project.tracker.get_task_state(task_id)
-            report = self._task_report(analysis, task_id, state, as_of)
-            all_tasks.append(report)
+            task_report = self._task_report(analysis, task_id, state, as_of)
+            schedule_report = task_report.schedule_report
+
+            all_tasks.append(task_report)
             if self.project.budget.get(task_id) is not None:
-                charged_tasks.append(report)
+                charged_tasks.append(task_report)
 
-            if report.condition is ScheduleCondition.OVERDUE:
-                overdues.append(report)
-            elif report.condition is ScheduleCondition.BLOCKED:
-                blocked.append(report)
-            elif report.condition is ScheduleCondition.LATE:
-                lates.append(report)
+            if schedule_report.schedule_condition is ScheduleCondition.OVERDUE:
+                overdues.append(task_report)
+            elif schedule_report.schedule_condition is ScheduleCondition.BLOCKED:
+                blocked.append(task_report)
+            elif schedule_report.schedule_condition is ScheduleCondition.LATE:
+                lates.append(task_report)
 
-            if report.planned_finish is not None:
-                if as_of <= report.planned_finish <= as_of + look_ahead:
-                    upcoming_deadlines.append(report)
+            if schedule_report.planned_finish is not None:
+                if as_of <= schedule_report.planned_finish <= as_of + look_ahead:
+                    upcoming_deadlines.append(task_report)
 
-            if report.planned_start is not None:
-                if as_of <= report.planned_start <= as_of + look_ahead:
+            if schedule_report.planned_start is not None:
+                if as_of <= schedule_report.planned_start <= as_of + look_ahead:
                     if state.status is TaskStatus.NOT_STARTED:
-                        upcoming_starts.append(report)
+                        upcoming_starts.append(task_report)
 
         summary = {"all": all_tasks, "overdues": overdues, "blocked": blocked, 
                    "lates": lates, "deadlines": upcoming_deadlines, 
@@ -346,6 +340,7 @@ class ReportBuilder:
         return summary
 
     def _task_report(self, analysis, task_id, state, as_of) -> TaskReport:
+        task = self.project.tasks[task_id]
         schedule_condition = self._schedule_condition(task_id, state, as_of)
         #budget_condition = self._budget_condition(task_id, state, as_of)
 
@@ -369,23 +364,24 @@ class ReportBuilder:
 
         return TaskReport(
             task_id=task_id,
-            name=self.project.tasks[task_id].name,
-            duration=self.project.tasks[task_id].duration,
-            state=state,
-            condition=schedule_condition,
-            planned_start=planned_start,
-            planned_finish=planned_finish,
-            actual_start=self.project.tracker.actual_start(task_id),
-            actual_finish=self.project.tracker.actual_finish(task_id),
-            start_variance=analysis.start_variance(task_id),
-            finish_variance=analysis.finish_variance(task_id),
-            duration_variance=analysis.duration_variance(task_id),
-            cost_variance=analysis.cost_variance(task_id),
-            days_overdue=days_overdue,
-            days_late=days_late,
-            days_waiting=days_waiting,
-            blocked_by=blocked_by,
-            root_causes=root_causes,
+            name=task.name,
+            schedule_report=self._task_schedule_report(analysis, task_id, state, schedule_condition),
+            budget_report=self._task_budget_report(analysis, task_id),
+            progress_report=self._task_progress_report(analysis, task_id),
+
+            #planned_start=planned_start,
+            #planned_finish=planned_finish,
+            #actual_start=self.project.tracker.actual_start(task_id),
+            #actual_finish=self.project.tracker.actual_finish(task_id),
+            #start_variance=analysis.start_variance(task_id),
+            #finish_variance=analysis.finish_variance(task_id),
+            #duration_variance=analysis.duration_variance(task_id),
+            #cost_variance=analysis.cost_variance(task_id),
+            #days_overdue=days_overdue,
+            #days_late=days_late,
+            #days_waiting=days_waiting,
+            #blocked_by=blocked_by,
+            #root_causes=root_causes,
         )
 
     def _schedule_condition(self, task_id, state, as_of) -> ScheduleCondition:
@@ -433,42 +429,52 @@ class ReportBuilder:
                                     project_remaining=_format_currency(-analysis.total_cost_variance()),
                                     project_variance=None)
 
-    def _project_progress_budget(self, analysis:Analyzer) -> ProjectProgressReport:
+    def _project_progress_report(self, analysis:Analyzer) -> ProjectProgressReport:
 
         return ProjectProgressReport(planned_progress=analysis.planned_project_progress(),
                                      actual_progress=analysis.actual_project_progress(),
                                      actual_effort=analysis.project_consumed_cost())
 
-    def _task_schedule_report(self, analysis:Analyzer) -> TaskScheduleReport:
-
-        return TaskScheduleReport(state=
-            schedule_condition=
-            planned_start=
-            planned_finish=
-            planned_duration=
+    def _task_schedule_report(self, analysis:Analyzer, task_id, state:TaskState, condition=ScheduleCondition) -> TaskScheduleReport:
+        schedule = self.project.schedule
+        tracker = self.project.tracker
+        return TaskScheduleReport(state=state,
+            schedule_condition=condition,
+            planned_start=schedule.start_dates[task_id],
+            planned_finish=schedule.finish_dates[task_id],
+            planned_duration=self.project.tasks[task_id].duration,
         
-            actual_start=
-            actual_finish=
-            actual_duration=
-            duration_variance=
+            actual_start=tracker.actual_start(task_id),
+            actual_finish=tracker.actual_finish(task_id),
+            actual_duration=tracker.actual_duration(task_id),
+            duration_variance=analysis.duration_variance(task_id),
         
-            forecast_start=
-            forecast_finish=
-            forecast_duration=
-            forecast_variance=)
+            forecast_start=None,
+            forecast_finish=None,
+            forecast_duration=None,
+            forecast_variance=None)
 
-    def _task_budget_report(self, analysis:Analyzer) -> TaskBudgetReport:
+    def _task_budget_report(self, analysis:Analyzer, task_id) -> TaskBudgetReport:
+        budget = self.project.budget
+        tracker = self.project.tracker
+        if task_id not in budget.amounts:
+            planned = None
+        else:
+            planned = budget.amounts[task_id]
+        rem = analysis.cost_variance(task_id)
+        if rem is not None:
+            rem = -rem
 
-        return TaskBudgetReport(project_budget=_format_currency(self.project.budget.total),
-                                    project_invoiced=_format_currency(self.project.tracker.total_actual_cost()),
-                                    project_remaining=_format_currency(-analysis.total_cost_variance()),
-                                    project_variance=None)
+        return TaskBudgetReport(task_budget=_format_currency(planned),
+                                    task_invoiced=_format_currency(tracker.actual_cost(task_id)),
+                                    task_remaining=_format_currency(rem),
+                                    forcast_budget_variance=None)
 
-    def _task_progress_budget(self, analysis:Analyzer) -> TaskProgressReport:
+    def _task_progress_report(self, analysis:Analyzer, task_id) -> TaskProgressReport:
 
-        return TaskProgressReport(planned_progress=analysis.planned_project_progress(),
-                                     actual_progress=analysis.actual_project_progress(),
-                                     actual_effort=analysis.project_consumed_cost())
+        return TaskProgressReport(planned_progress=analysis.planned_progress(task_id),
+                                     actual_progress=analysis.actual_progress(task_id),
+                                     actual_effort=None)
 
     def _has_incomplete_predecessors(self, task_id):
         return bool(self._incomplete_predecessors(task_id))
