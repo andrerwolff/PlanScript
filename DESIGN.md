@@ -89,7 +89,7 @@ wired into the CLI; see `planscript/serializer/`.)
 | `planscript/cli/display.py` | Table rendering, schedule/budget views, legacy interactive menus. |
 | `planscript/cli/gantt.py` | Textual Gantt rendering. |
 | `planscript/serializer/plan_serializer.py` | `Project` → `.plan` text. Incomplete; not wired into the CLI. |
-| `planscript/tests/` | `unittest` suite (180 tests) plus shared project fixtures. |
+| `planscript/tests/` | `unittest` suite (225 tests) plus shared project fixtures. |
 | `_archive/` | Superseded interactive CLI and the original standalone invoice model. |
 
 ## Model
@@ -249,33 +249,54 @@ Rules and current limits:
 
 ### `Tracker` — actuals
 
-Records events and derives per-task actuals:
+Records events and derives per-task actuals. Every derived value is measured to
+a single **data date** (`as_of`), which is the report's reference date and
+defaults to today. Events and invoices dated after the data date are ignored,
+so historical state is deterministic and a future-dated entry never makes a
+task look started or finished. `future_dated_events(as_of)` returns the entries
+a data date excluded, so callers can report them instead of silently dropping
+them.
 
 * `actual_start` — the task's `start` event; for a summary, the earliest
   descendant actual start.
 * `actual_finish` — the task's `complete` event; for a summary, the latest
   descendant finish, and only when every descendant is finished.
 * `actual_duration` — inclusive calendar days: `finish − start + 1`, or
-  `as_of − start + 1` while the task is open.
-* `actual_cost` — sum of invoice allocations to the task up to a date, plus all
-  descendant costs for a summary.
-* `get_task_state` — replays events to derive `TaskStatus` and
-  `percent_complete`, raising `ValidationError`/`ParseError` for invalid
+  `as_of − start + 1` while the task is open. Because the data date limits the
+  events considered, an elapsed duration is never negative, and a task whose
+  start is recorded after the data date has no actual duration yet.
+* `actual_cost` — sum of invoice allocations to the task up to the data date,
+  plus all descendant costs for a summary.
+* `get_task_state` — replays events up to the data date to derive `TaskStatus`
+  and `percent_complete`, raising `ValidationError`/`ParseError` for invalid
   sequences instead of repairing them.
 
 ### `Analyzer` — variance
 
-Compares `Schedule` and task durations against `Tracker` actuals:
+Compares `Schedule` and task durations against `Tracker` actuals at the same
+data date (`Analyzer(project, as_of)`, defaulting to today):
 
 * `start_variance` / `finish_variance` — actual minus planned date, `None`
   until the corresponding actual exists; raises `SchedulingError` when the
   schedule has no calendar dates (no project `start_date`).
 * `duration_variance` — actual (or elapsed, measured to `as_of`) duration minus
   planned duration. Summary planned duration comes from scheduled dates
-  (raising `SchedulingError` when the schedule has none); milestones are always 0.
+  (raising `SchedulingError` when the schedule has none). A milestone that has
+  happened has zero duration variance; one that has not reports `None`.
+* `planned_progress` / `actual_progress` — 0..1 fractions for a task. Planned
+  progress counts calendar days to `as_of`, inclusive of the planned start day
+  and capped at the planned duration; a milestone counts as planned once its
+  date is reached. Actual progress comes from the tracking events up to `as_of`;
+  a milestone reports as complete or not complete, since it has no duration to
+  measure.
+* `planned_project_progress` / `actual_project_progress` — duration-weighted
+  averages over leaf tasks with a positive duration, so milestones and summary
+  tasks do not weight the project figure.
 * `project_actual_start` — earliest actual start across tasks.
-* `project_progress` — duration-weighted percent complete over leaf tasks with
-  a positive duration.
+* `cost_variance` / `total_cost_variance` — actual minus budget, where a
+  positive value is over budget.
+* `project_consumed_cost` — actual cost divided by the planned budget, or
+  `None` when the project has no planned budget.
 
 ### `Budgeter` — budget resolution
 
@@ -302,42 +323,94 @@ weight totals) is enforced by `Project.validate()`, not by the `Budgeter`.
 `ReportBuilder(project, as_of, look_ahead).build() -> ProjectReport` composes
 the analyzer and tracker into a status report:
 
-* Project status: `Not Started`, `Started`, `In Progress`, `Completed`.
+* Project status: `Not Started` (no leaf has begun), `Started` (work has begun
+  but nothing is finished or progressing), `In Progress`, `Completed` (every
+  leaf is complete).
 * Per-task `ScheduleCondition`: `Blocked` (planned start passed, a predecessor
   is incomplete), `Late` (planned start passed, predecessors complete, not
   started), `Overdue` (started but planned finish passed), otherwise
   `On Schedule`. Unstarted conditions are evaluated before overdue so
-  un-actioned work surfaces first.
+  un-actioned work surfaces first, and completion is judged at the data date.
 * For blocked tasks, `blocked_by` lists incomplete predecessors and
   `root_causes` walks the dependency chain to the terminal blockers that must
-  actually be actioned.
-* `upcoming_deadlines` and `upcoming_starts` cover the look-ahead window.
-* `ProjectBudgetReport` is defined but not yet populated, so budget figures do
-  not appear in the status report.
+  actually be actioned. (Both are computed but not yet rendered: see
+  `ROADMAP.md` P1-3.)
+* `ProjectBudgetReport` and `TaskBudgetReport` carry only the planned and actual
+  amounts; `remaining` (`budget − actual`) and `cost_variance`
+  (`actual − budget`) are derived from them, so the two can never disagree.
+* A value that cannot be derived at the data date is reported as `n/a`, never as
+  a zero: a zero row means a real zero. A `Data Notices` section lists tracking
+  entries dated after the report date, so a truncated figure is explained rather
+  than silently dropped.
+* Milestones report no duration (no duration variance, no inclusive one-day
+  span), and per-task `budget_consumed` is `n/a` for a task with no budget.
 
-Example (`python -m planscript status Simple.plan -ao 2026-09-20`):
+Example (`python -m planscript status Simple.plan -ao 2026-10-05`):
 
 ```text
-Status Report as-of 2026-09-20
+Status Report as-of 2026-10-05
 =======================================
 Project Name: Variance Test Project
-
     Status: In Progress
 
+--------------------------------------
+Project Schedule Report
+--------------------------------------
     Planned Start: 2026-08-01
     Planned Finish: 2026-11-30
     Planned Duration: 48d
     Actual Start: 2026-08-01
-    Progress: 74%
+    Forecast Finish: n/a
+    Schedule Variance: n/a
 
-Overdue Tasks
-    3.4 - Closeout [Started] is overdue by 3d
-Blocked Tasks
-Late Tasks
-    4.1 - Future Task [Not Started] is late by 25d
-Upcoming Deadlines (+21d)
-Upcoming Tasks (+21d)
+--------------------------------------
+Project Budget Report
+--------------------------------------
+    Planned Budget: $304,650.50
+    Actual Cost: $55,862.24
+    Remaining Budget: $248,788.26
+    Cost Variance (actual - budget): ($248,788.26)
+
+--------------------------------------
+Project Progress Report
+--------------------------------------
+    Planned Progress: 100.0%
+    Actual Progress: 74.1%
+    Budget Consumed: 18.3%
+
+1.1 - Kickoff
+--------------------------------------
+Schedule Report    Status: On Schedule
+--------------------------------------
+    Planned Start / Finish: 2026-08-01 / 2026-08-01
+    Planned Duration: - (milestone)
+    Actual Start / Finish: 2026-08-01 / 2026-08-01
+    Duration Variance: 0d (milestone)
+
+--------------------------------------
+Budget Report
+--------------------------------------
+    Planned Budget: $3,400.00
+    Actual Cost: $2,500.00
+    Remaining Budget: $900.00
+    Cost Variance (actual - budget): ($900.00)
+
+--------------------------------------
+Progress Report
+--------------------------------------
+    Planned Progress: 100.0%
+    Actual Progress: 100.0%
+    Budget Consumed: 73.5%
 ```
+
+Forecast fields (`Forecast Finish`, `Schedule Variance`, per-task forecast
+duration) are reserved but not yet derived; they print `n/a` until P3-8
+implements forecasting.
+
+`python -m planscript status Simple.plan -ao 2026-09-26` (the real data date at
+the time of writing) additionally prints a `Data Notices` section, because
+`Simple.plan` records a `3.4 start` entry dated 2026-09-27 - after the report
+date. That entry is excluded from every figure and announced instead.
 
 ## CLI
 
@@ -437,7 +510,9 @@ the rule:
 ## Testing
 
 The suite uses Python's built-in `unittest`; there is no third-party test
-dependency. Currently **170 tests, all passing**.
+dependency. Currently **225 tests**; all pass except one assertion in
+`test_agreed_cli_regressions` that awaits the section rendering of
+`ROADMAP.md` P1-3.
 
 ```powershell
 python -m unittest discover -s planscript/tests -t .
@@ -469,7 +544,9 @@ The design intent and the implementation are not yet aligned in these areas.
   functions.
 * The serializer is incomplete and not wired to the CLI, so plans can be read
   but not written back.
-* `ProjectBudgetReport` is not populated by the reporter.
+* The status report lists every task but not the summary sections (overdue,
+  blocked, late, upcoming deadlines/starts) that `ROADMAP.md` P1-3 still asks
+  for, and forecast finish / schedule variance are not yet derived.
 * Tracking design decisions that are not yet implemented: same-day lifecycle
   precedence, rejection of future-dated events, duplicate same-day detection,
   and a decision on tracking summary tasks.

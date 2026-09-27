@@ -72,8 +72,9 @@ Work items are tagged with the modules they touch.
 
 **Quality baseline**
 
-* 180 `unittest` tests covering parser errors, CPM examples,
-  dependency types, tracking, budgets, variance, reports, and CLI behavior.
+* 225 `unittest` tests covering parser errors, CPM examples,
+  dependency types, tracking, budgets, variance, reports, data-date behavior,
+  and CLI behavior.
 
 ---
 
@@ -102,38 +103,51 @@ problem.
 
 ### P1-2 Bring tracking behaviour in line with the tracking design (`DESIGN.md`)
 
-The tracking design is written; five rules are not yet enforced:
+The tracking design is written; these rules are not yet enforced:
 
 1. **Same-day lifecycle precedence** — within one date, events should be
    applied as `start → progress → complete` regardless of file order. Today
    same-date order is file order, so `progress` written above `start` is
    rejected.
-2. **Future-dated events** — a tracking date after "today" should be a
-   validation error. `Full_Plan.plan` currently contains an event dated
-   `2026-10-11` that parses cleanly whenever the current date is earlier. Decide
-   whether the comparison uses the real current date or an explicit data date,
-   then document it.
+2. **Future-dated events as a validation error** — decided differently for now:
+   rather than rejecting them at parse time, every derived figure is measured to
+   an explicit data date (`as_of`, default today), events after that date are
+   excluded, and `ReportBuilder` prints a `Data Notices` section listing what was
+   excluded (`Tracker.future_dated_events`). So `Full_Plan.plan`'s `2026-10-11`
+   event no longer distorts a report run on an earlier date. Remaining: decide
+   whether a hard parse-time rejection is still wanted alongside that, and
+   document the decision in `SYNTAX.md`.
 3. **Duplicate same-day events** — two `progress` events for one task on one
    date must be rejected rather than resolved by file order.
 4. **Tracking on summary tasks** — currently accepted silently. Decide: reject,
    derive from leaves, or allow with rollup, then enforce and document.
 5. **Date-only line with no entries** — should be invalid.
-* Provide an `as_of`/data-date parameter so historical state can be derived
-  deterministically and tested without depending on the wall clock.
+* Done: `as_of`/data-date parameter exists on `Tracker` and `Analyzer`
+  (`Analyzer(project, as_of)`), so historical state is derived deterministically
+  and tested without depending on the wall clock; `test_reporter.py` pins the
+  behaviour across several data dates.
 * Acceptance: tests per rule; `DESIGN.md`, `SYNTAX.md`, and the
   deferred list below updated to match the decision.
 
 ### P1-3 Reporting completeness
 
-* Populate `ProjectBudgetReport` in `ReportBuilder` (budget, invoiced, paid,
-  remaining, variance, invoice list) and render the budget section in
-  `ProjectReport.render_text`.
-* Expose the variance values already computed by `Analyzer` (start/finish/
-  duration) in the status report so slips are visible, not just recomputed.
-* Turn `test_reporter.py` from a print-and-hope test into assertions on project
-  status, overdue/blocked/late lists, look-ahead windows, and root causes.
-* Acceptance: `python -m planscript status <file>` shows budget vs. invoiced and
-  variance; reporter tests assert values.
+* Done: `ProjectBudgetReport`/`TaskBudgetReport` are populated (planned and
+  actual amounts, with `remaining`/`cost_variance` derived from them) and the
+  budget section renders in `ProjectReport.render_text`; the progress section
+  renders planned/actual progress and `budget_consumed`.
+* Done: the variance values computed by `Analyzer` are exposed — planned and
+  actual duration, start/finish and duration variance per task, planned duration
+  and schedule variance (reserved `n/a`) for the project.
+* Done: `test_reporter.py` asserts project status, schedule conditions, budget
+  reconciliation, the `budget = actual + remaining` invariant, and data notices.
+* Remaining: render the summary sections the report model already computes —
+  overdue/blocked/late lists (with `blocked_by`/`root_causes`) and the
+  look-ahead windows — which is what the one failing assertion in
+  `test_agreed_cli_regressions` waits for.
+* Remaining: derive forecast finish and schedule variance (P3-8) so the `n/a`
+  placeholders become figures.
+* Acceptance: `python -m planscript status <file>` shows budget vs. actual and
+  variance; reporter tests assert values; suite fully green.
 
 ## P2 — Calendars (working time)
 
@@ -272,7 +286,8 @@ each one is a decision waiting to be made, not an oversight.
 * **Tests first for defects.** Every P0/P1 item lands with a test that fails
   before the change.
 * **Keep the suite green.** `python -m unittest discover -s planscript/tests -t .`
-  must pass before a commit; the current baseline is 180 tests.
+  must pass before a commit; the current baseline is 225 tests (one known
+  failure awaiting P1-3 section rendering).
 * **No new runtime dependencies** without an explicit decision; `unittest` is
   the test framework.
 * **Validation ownership.** Syntax and structure in the parser, model legality

@@ -9,6 +9,12 @@ from planscript.engine.parser import Parser
 from planscript.engine.budgeter import Budgeter
 from decimal import Decimal
 
+# Analysis is pinned to a fixed data date so these tests never depend on the
+# wall clock. It falls after the last tracking event in every fixture below;
+# Tracker ignores events and invoices dated after the data date.
+DATA_DATE = date(2027, 1, 1)
+
+
 class ValidatePerformance(unittest.TestCase):
     def setUp(self):
         self.parser = Parser()
@@ -31,7 +37,7 @@ class ValidatePerformance(unittest.TestCase):
         
         project = self.parser.parse(plan)
         project.schedule = Scheduler().calculate(project)
-        analysis = Analyzer(project)
+        analysis = Analyzer(project, DATA_DATE)
 
         self.assertEqual(-1, analysis.start_variance("1.2").days)
 
@@ -54,7 +60,7 @@ class ValidatePerformance(unittest.TestCase):
 
         project = self.parser.parse(plan)
         project.schedule = Scheduler().calculate(project)
-        analysis = Analyzer(project)
+        analysis = Analyzer(project, DATA_DATE)
         
         self.assertEqual(2, analysis.start_variance("1.2").days)
 
@@ -77,7 +83,7 @@ class ValidatePerformance(unittest.TestCase):
         
         project = self.parser.parse(plan)
         project.schedule = Scheduler().calculate(project)
-        analysis = Analyzer(project)
+        analysis = Analyzer(project, DATA_DATE)
 
         self.assertEqual(0, analysis.start_variance("1.1").days)
         self.assertEqual(0, analysis.start_variance("1.2").days)
@@ -100,7 +106,7 @@ class ValidatePerformance(unittest.TestCase):
         
         project = self.parser.parse(plan)
         project.schedule = Scheduler().calculate(project)
-        analysis = Analyzer(project)
+        analysis = Analyzer(project, DATA_DATE)
 
         self.assertIsNone(analysis.start_variance("1.2"))
 
@@ -125,7 +131,7 @@ class ValidatePerformance(unittest.TestCase):
         
         project = self.parser.parse(plan)
         project.schedule = Scheduler().calculate(project)
-        analysis = Analyzer(project)
+        analysis = Analyzer(project, DATA_DATE)
 
         self.assertEqual(-1, analysis.finish_variance("1.1").days)
 
@@ -149,7 +155,7 @@ class ValidatePerformance(unittest.TestCase):
         
         project = self.parser.parse(plan)
         project.schedule = Scheduler().calculate(project)
-        analysis = Analyzer(project)
+        analysis = Analyzer(project, DATA_DATE)
 
         self.assertEqual(2, analysis.finish_variance("1.1").days)
 
@@ -173,7 +179,7 @@ class ValidatePerformance(unittest.TestCase):
         
         project = self.parser.parse(plan)
         project.schedule = Scheduler().calculate(project)
-        analysis = Analyzer(project)
+        analysis = Analyzer(project, DATA_DATE)
 
         self.assertEqual(0, analysis.finish_variance("1.1").days)
 
@@ -195,7 +201,7 @@ class ValidatePerformance(unittest.TestCase):
         
         project = self.parser.parse(plan)
         project.schedule = Scheduler().calculate(project)
-        analysis = Analyzer(project)
+        analysis = Analyzer(project, DATA_DATE)
 
         self.assertIsNone(analysis.finish_variance("1.1"))
 
@@ -226,8 +232,8 @@ class ValidatePerformance(unittest.TestCase):
         project = self.parser.parse(plan)
         project.schedule = Scheduler().calculate(project)
 
-        self.assertEqual(date(2026,1,1), project.tracker.actual_start("1"))
-        self.assertEqual(date(2026,1,17), project.tracker.actual_start("2"))
+        self.assertEqual(date(2026,1,1), project.tracker.actual_start("1", DATA_DATE))
+        self.assertEqual(date(2026,1,17), project.tracker.actual_start("2", DATA_DATE))
         
     def test_summary_latest_finishes(self):
         plan = textwrap.dedent("""\
@@ -259,8 +265,8 @@ class ValidatePerformance(unittest.TestCase):
         project = self.parser.parse(plan)
         project.schedule = Scheduler().calculate(project)
 
-        self.assertEqual(date(2026,1,12), project.tracker.actual_finish("1"))
-        self.assertEqual(date(2026,1,24), project.tracker.actual_finish("2"))
+        self.assertEqual(date(2026,1,12), project.tracker.actual_finish("1", DATA_DATE))
+        self.assertEqual(date(2026,1,24), project.tracker.actual_finish("2", DATA_DATE))
 
     def test_nested_summary(self):
         plan = textwrap.dedent("""\
@@ -296,10 +302,10 @@ class ValidatePerformance(unittest.TestCase):
         project = self.parser.parse(plan)
         project.schedule = Scheduler().calculate(project)
 
-        self.assertEqual(date(2026,1,3), project.tracker.actual_start("1"))
-        self.assertEqual(date(2026,1,3), project.tracker.actual_start("1.1"))
-        self.assertEqual(date(2026,1,15), project.tracker.actual_finish("1"))
-        self.assertEqual(date(2026,1,12), project.tracker.actual_finish("1.1"))
+        self.assertEqual(date(2026,1,3), project.tracker.actual_start("1", DATA_DATE))
+        self.assertEqual(date(2026,1,3), project.tracker.actual_start("1.1", DATA_DATE))
+        self.assertEqual(date(2026,1,15), project.tracker.actual_finish("1", DATA_DATE))
+        self.assertEqual(date(2026,1,12), project.tracker.actual_finish("1.1", DATA_DATE))
 
     def test_summary_no_tracked_child(self):
         plan = textwrap.dedent("""\
@@ -329,7 +335,7 @@ class ValidatePerformance(unittest.TestCase):
         project = self.parser.parse(plan)
         project.schedule = Scheduler().calculate(project)
 
-        self.assertIsNone(project.tracker.actual_start("1"))
+        self.assertIsNone(project.tracker.actual_start("1", DATA_DATE))
         
     def test_summary_partial_tracked_child(self):
         plan = textwrap.dedent("""\
@@ -362,9 +368,9 @@ class ValidatePerformance(unittest.TestCase):
         project = self.parser.parse(plan)
         project.schedule = Scheduler().calculate(project)
 
-        self.assertEqual(date(2026,1,6), project.tracker.actual_start("1"))
+        self.assertEqual(date(2026,1,6), project.tracker.actual_start("1", DATA_DATE))
 
-        self.assertIsNone(project.tracker.actual_finish("1"))
+        self.assertIsNone(project.tracker.actual_finish("1", DATA_DATE))
 
     def test_multi_tracked_project(self):
         plan = textwrap.dedent("""\
@@ -433,13 +439,13 @@ class ValidatePerformance(unittest.TestCase):
 
         project = self.parser.parse(plan)
         project.schedule = Scheduler().calculate(project)
-        analysis = Analyzer(project)
+        analysis = Analyzer(project, DATA_DATE)
 
-        self.assertEqual(date(2026,10,1), project.tracker.actual_start("1.1"))
+        self.assertEqual(date(2026,10,1), project.tracker.actual_start("1.1", DATA_DATE))
         self.assertEqual(0, analysis.start_variance("1.1").days)
         self.assertEqual(0, analysis.duration_variance("1.1").days)
 
-        self.assertEqual(date(2026,10,3), project.tracker.actual_start("1.2"))
+        self.assertEqual(date(2026,10,3), project.tracker.actual_start("1.2", DATA_DATE))
         self.assertEqual(2, analysis.start_variance("1.2").days)
         self.assertEqual(7, analysis.finish_variance("1.2").days)
         self.assertEqual(5, analysis.duration_variance("1.2").days)

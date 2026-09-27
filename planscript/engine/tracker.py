@@ -4,6 +4,13 @@ Tracking records dated events against project tasks. Tracker provides access
 to tracking history and derives actual task dates and durations. TaskState
 derives the current tracking status and percent complete from a task's events.
 
+Every derived value is measured to a single data date (`as_of`, defaulting to
+today). Events and invoices dated after the data date are ignored, so
+historical state can be derived deterministically and a future-dated entry
+never makes a task look started or finished. `Tracker.future_dated_events()`
+returns the entries a data date excluded so callers can report them rather
+than silently drop them.
+
 Tracking data is authoritative history; status, progress, and actual schedule
 values are derived from that history.
 """
@@ -106,11 +113,24 @@ class Tracker:
     task_events: list[TaskEvent] = field(default_factory=list)
     invoice_events: list[Invoice] = field(default_factory=list)
 
-    def actual_start(self, task_id):
+    @staticmethod
+    def _data_date(as_of):
+        """Return the data date used to derive actual values.
+
+        The data date limits which tracking events are considered, so historical
+        state can be derived deterministically. Today is used when no date is
+        supplied, matching the other date-consuming methods.
+        """
+        return as_of if as_of is not None else date.today()
+
+    def actual_start(self, task_id, as_of=None):
         """Return the actual start date for a task.
 
         For leaf tasks, the date comes from the task's start event. For summary
         tasks, the date is derived as the earliest actual start among descendants.
+
+        Events after the data date are ignored, so a start recorded in the future
+        does not make a task look started.
 
         Returns:
             The actual start date, or None if the task has not started.
@@ -118,11 +138,13 @@ class Tracker:
 
         if self.hierarchy is None:
             raise ValidationError(f"Hierarchy not working")
-        
+
+        as_of = self._data_date(as_of)
+
         if self.hierarchy.is_summary(task_id):
             starts = []
             for child_id in self.hierarchy.children[task_id]:
-                start = self.actual_start(child_id)
+                start = self.actual_start(child_id, as_of)
 
                 if start is not None:
                     starts.append(start)
@@ -131,29 +153,34 @@ class Tracker:
                 return min(starts)
             return None
 
-        for event in self.get_tasks_events(task_id):
+        for event in self.get_tasks_events(task_id, as_of):
             if event.directive == EventDirective.START:
                 return event.date
         return None
 
-    def actual_finish(self, task_id):
+    def actual_finish(self, task_id, as_of=None):
         """Return the actual finish date for a task.
 
         For leaf tasks, the date comes from the task's completion event. For
         summary tasks, the date is derived as the latest actual finish among
         descendants.
 
+        Events after the data date are ignored, so work completed later is not
+        reported as finished.
+
         Returns:
             The actual finish date, or None if the task is not completely finished.
         """
 
         if self.hierarchy is None:
-            raise ValidationError(f"Hierarchy not working")
+            raise ValidationError("Hierarchy not working")
+
+        as_of = self._data_date(as_of)
 
         if self.hierarchy.is_summary(task_id):
             finishes = []
             for child_id in self.hierarchy.children[task_id]:
-                finish = self.actual_finish(child_id)
+                finish = self.actual_finish(child_id, as_of)
 
                 if finish is not None:
                     finishes.append(finish)
@@ -164,46 +191,48 @@ class Tracker:
                 return max(finishes)
             return None
 
-        for event in self.get_tasks_events(task_id):
+        for event in self.get_tasks_events(task_id, as_of):
             if event.directive == EventDirective.COMPLETE:
                 return event.date
         return None
 
-    def actual_dates(self, task_id):
-        start = self.actual_start(task_id)
-        finish = self.actual_finish(task_id)
+    def actual_dates(self, task_id, as_of=None):
+        start = self.actual_start(task_id, as_of)
+        finish = self.actual_finish(task_id, as_of)
         actual_dates = {
             "start" : start,
             "finish" : finish,
         }
         return actual_dates
 
-    def actual_duration(self, task_id, current_date=None):
+    def actual_duration(self, task_id, as_of=None):
         """Return the actual or elapsed duration of a task.
 
         A completed task uses its actual start and finish dates. An active task
-        uses its actual start and the supplied current date, or today's date when
-        no current date is supplied.
+        uses its actual start and the data date, which defaults to today.
 
-        Durations are inclusive of both the start and end dates.
+        Durations are inclusive of both the start and end dates. Because the
+        data date also limits the events considered, an elapsed duration is
+        never negative and a task whose start is recorded after the data date
+        has no actual duration at all.
         """
 
-        start = self.actual_start(task_id)
-        finish = self.actual_finish(task_id)
+        as_of = self._data_date(as_of)
+
+        start = self.actual_start(task_id, as_of)
+        finish = self.actual_finish(task_id, as_of)
 
         if start is None:
             return None
-        
+
         #complete project
         if finish is not None:
             return finish - start + timedelta(days=1)
 
-        if current_date is None:
-            current_date = date.today()
         #elapsed duration
-        return current_date - start + timedelta(days=1)
+        return as_of - start + timedelta(days=1)
 
-    def actual_cost(self, task_id, current_date=None):
+    def actual_cost(self, task_id, as_of=None):
         """Return the actual cost for a task.
 
         A task's cost is the sum of the invoice amounts allocated to it,
@@ -212,31 +241,32 @@ class Tracker:
         made directly to a summary is additional to the charges beneath it.
 
         Returns:
-            The actual cost incurred up to the current date.
+            The actual cost incurred up to the data date.
         """
 
         if self.hierarchy is None:
             raise ValidationError("Hierarchy not working")
 
-        if current_date is None:
-            current_date = date.today()
+        as_of = self._data_date(as_of)
 
         cost = Decimal("0")
 
         for invoice in self.invoice_events:
-            if invoice.invoice_date <= current_date and task_id in invoice.allocations:
+            if invoice.invoice_date <= as_of and task_id in invoice.allocations:
                 cost += invoice.allocations[task_id]
 
         if self.hierarchy.is_summary(task_id):
             for child_id in self.hierarchy.get_children(task_id):
-                cost += self.actual_cost(child_id, current_date)
+                cost += self.actual_cost(child_id, as_of)
 
         return cost
 
-    def total_actual_cost(self, current_date=None) -> Decimal:
+    def total_actual_cost(self, as_of=None) -> Decimal:
+        as_of = self._data_date(as_of)
+
         total_cost = Decimal("0")
         for task_id in self.hierarchy.get_roots():
-            cost = self.actual_cost(task_id, current_date)
+            cost = self.actual_cost(task_id, as_of)
             if cost is not None:
                 total_cost += cost
         return total_cost
@@ -255,26 +285,45 @@ class Tracker:
 
         self.invoice_events.append(invoice)
 
-    def get_all_task_events(self):
-        return sorted(self.task_events, key=attrgetter("date"))
+    def get_all_task_events(self, as_of=None):
+        """Return every task event up to the data date, in chronological order."""
 
-    def get_tasks_events(self, task_id):
+        as_of = self._data_date(as_of)
+        events = sorted(self.task_events, key=attrgetter("date"))
+        return [event for event in events if event.date <= as_of]
+
+    def get_tasks_events(self, task_id, as_of=None):
+        """Return a task's events up to the data date, in chronological order."""
+
+        as_of = self._data_date(as_of)
         task_events = []
         for event in self.task_events:
             if event.task_id == task_id:
                 task_events.append(event)
-        return sorted(task_events,key=attrgetter('date'))
+        events = sorted(task_events,key=attrgetter('date'))
+        return [event for event in events if event.date <= as_of]
 
-    def get_latest_task_event(self):
-        events = self.get_all_task_events()
+    def get_latest_task_event(self, as_of=None):
+        events = self.get_all_task_events(as_of)
         if events:
             return events[-1]
         else:
             return None
 
-    def get_task_state(self, task_id):
+    def future_dated_events(self, as_of=None):
+        """Return task events dated after the data date, in chronological order.
+
+        The data date never silently drops tracking data: callers can report
+        these events so a truncated figure is explained rather than hidden.
+        """
+
+        as_of = self._data_date(as_of)
+        events = sorted(self.task_events, key=attrgetter("date"))
+        return [event for event in events if event.date > as_of]
+
+    def get_task_state(self, task_id, as_of=None):
         task_state = TaskState(task_id)
-        task_state._derive(self.get_tasks_events(task_id))
+        task_state._derive(self.get_tasks_events(task_id, as_of))
         return task_state
 
 @dataclass
