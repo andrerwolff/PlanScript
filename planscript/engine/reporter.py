@@ -176,16 +176,19 @@ class TaskScheduleReport:
               f"    Planned Start / Finish: {_format_date(self.planned_start)} / {_format_date(self.planned_finish)}\n")
 
         if self.is_milestone():
-            text += (f"    Planned Duration: - (milestone)\n"
+            text += (f"    Planned Duration: 0d (milestone)\n"
                      f"    Actual Start / Finish: {_format_date(self.actual_start)} / {_format_date(self.actual_finish)}\n"
                      f"    Duration Variance: {_format_days(self.duration_variance)} (milestone)\n")
             return text + "\n"
 
         text += f"    Planned Duration: {_format_duration(self.planned_duration)}\n"
 
+        #Started
         if self.actual_start is not None:
+            #Completed
             if self.actual_finish is not None:
                 text += (f"    Actual Start / Finish: {_format_date(self.actual_start)} / {_format_date(self.actual_finish)}\n")
+            #In Progress (not finished)
             else:
                 text += f"    Actual Start: {_format_date(self.actual_start)}\n"
 
@@ -267,8 +270,7 @@ class TaskBudgetReport:
               f"--------------------------------------\n"
               f"    Planned Budget: {_format_money(self.task_budget)}\n"
               f"    Actual Cost: {_format_money(self.task_actual)}\n"
-              f"    Remaining Budget: {_format_money(self.task_remaining)}\n"
-              f"    Cost Variance (actual - budget): {_format_money(self.cost_variance)}\n\n")
+              f"    Remaining Budget: {_format_money(self.task_remaining)}\n\n")
         return text
 
 @dataclass

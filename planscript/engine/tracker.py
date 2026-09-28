@@ -218,6 +218,7 @@ class Tracker:
         """
 
         as_of = self._data_date(as_of)
+        
 
         start = self.actual_start(task_id, as_of)
         finish = self.actual_finish(task_id, as_of)

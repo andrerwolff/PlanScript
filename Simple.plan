@@ -37,6 +37,9 @@ task 3.3 Inspection 0d
 task 3.4 Closeout 5d
     budget 10%
     depends 3.3 FS 0d
+task 3.5 Done 0d
+    depends 3.4 FS 20d
+    budget 0%
 
 task 4 Untracked Work
 task 4.1 Future Task 10d
