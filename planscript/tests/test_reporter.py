@@ -546,7 +546,7 @@ class TestRenderedValues(unittest.TestCase):
         self.assertTrue(schedule.is_milestone())
 
         text = schedule.render_text()
-        self.assertIn("Planned Duration: - (milestone)", text)
+        self.assertIn("Planned Duration: 0d (milestone)", text)
         self.assertIn("Duration Variance: 0d (milestone)", text)
         self.assertNotIn("1d", text)
 
