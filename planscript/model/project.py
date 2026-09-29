@@ -16,6 +16,7 @@ from decimal import Decimal
 from planscript.exceptions import ValidationError
 from planscript.model.calendar import Calendar
 from planscript.model.dependency import Dependency, DependencyType, DependencyGraph
+from planscript.model.constraint import Constraint, ConstraintType
 from planscript.model.task import Task
 from planscript.model.hierarchy import TaskHierarchy
 from planscript.model.budget import Budget
@@ -62,6 +63,7 @@ class Project:
 
     tasks: dict[str, Task] = field(default_factory=dict)
     dependencies: list[Dependency] = field(default_factory=list)
+    constraints: list[Constraint] = field(default_factory=list)
     calendars: dict[str, Calendar] = field(default_factory=dict)
 
     budget: Budget = field(default_factory=Budget)
@@ -223,6 +225,10 @@ class Project:
             if dependency.predecessor == task:
                 outgoing_dependencies.append(dependency)
         return outgoing_dependencies
+
+    def add_constraint(self, task, con_type, con_date) -> None:
+        self.constraints.append(Constraint(task, con_type, con_date))
+    
 
     def validate(self) -> None:
         """Validate the internal consistency of the project.
