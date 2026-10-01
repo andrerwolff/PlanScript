@@ -7,6 +7,7 @@ from planscript.model.project import Project
 from planscript.model.schedule import Schedule
 from planscript.model.task import Task
 from planscript.model.dependency import Dependency
+from planscript.model.constraint import Constraint, ConstraintType
 
 class Forecaster:
 
@@ -19,21 +20,27 @@ class Forecaster:
                                    start_date=project.start_date,
                                    finish_date=project.finish_date,
                                    calendar=project.calendar)
-
-        dependencies_to_skip = []
+        
         for task_id, task in project.tasks.items():
+            
             task_state = project.tracker.get_task_state(task_id, as_of)
             if task_state.status == TaskStatus.COMPLETED:
                 forecast_duration = timedelta(0)
-                actual_finish = project.tracker.actual_finish(task_id)
+                con_date = project.tracker.actual_finish(task_id)
+                con_type = ConstraintType.MANDATORY_FINISH
             elif task_state.status == TaskStatus.IN_PROGRESS:
                 forecast_duration = (1 - task_state.percent_complete / 100) * task.duration
-                actual_start = project.tracker.actual_start(task_id)
+                con_date = project.tracker.actual_start(task_id)
+                con_type = ConstraintType.MANDATORY_START
             else:
                 forecast_duration = task.duration
+                con_type = None
+                con_date = None
                 
             forecast_task = Task(task_id, "f_" + task.name, forecast_duration)
             forecast_project.add_task(forecast_task)
+            if con_date is not None and con_type is not None:
+                forecast_project.add_constraint(forecast_task, con_type, con_date)
 
         for dep in project.dependencies:
 

@@ -92,8 +92,10 @@ class Scheduler:
 
             if task.duration is None:
                 continue
+
             dependencies = graph.predecessors[task_id]
 
+            # 1. Calculate dependency-driven earliest start
             if not dependencies:
                 early_start[task_id] = timedelta(0)
 
@@ -120,7 +122,8 @@ class Scheduler:
                         raise ValueError("Looks like an issue with dependency type - Forward Pass")
 
                     candidate_es_values.append(candidate_es)
-        
+                # 2. Apply start/finish constraints
+                candidate_es = self._apply_forward_constraints(task, candidate_es, project.constraints)
                 early_start[task_id] = max(candidate_es_values)
             early_finish[task_id] = (early_start[task_id] + task.duration)
 

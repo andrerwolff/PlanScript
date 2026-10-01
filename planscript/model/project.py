@@ -227,7 +227,13 @@ class Project:
         return outgoing_dependencies
 
     def add_constraint(self, task, con_type, con_date) -> None:
-        self.constraints.append(Constraint(task, con_type, con_date))
+
+        if task not in self.tasks.values():
+            raise ValueError(f"Task '{task.number}' does not exist in the project.")
+        if isinstance(dep_type, str):
+            con_type = ConstraintType(con_type)   
+        constraint = Constraint(task=task, con_type=con_type, con_date=con_date)
+        self.constraints.append(constraint)
     
 
     def validate(self) -> None:

@@ -5,10 +5,10 @@ from datetime import date
 from planscript.model.task import Task
 
 class ConstraintType(Enum):
-    START_ON_OR_AFTER = "SOA"
-    START_ON_OR_BEFORE = "SOB"
-    FINISH_ON_OR_AFTER = "FOA"
-    FINISH_ON_OR_BEFORE = "FOB"
+    START_NO_EARLIER_THAN = "SNET"
+    START_NO_LATER_THAN = "SNLT"
+    FINISH_NO_EARLIER_THAN = "FNET"
+    FINISH_NO_LATER_THAN = "FNLT"
     MANDATORY_START = "MSON"
     MANDATORY_FINISH = "MFON"
 
