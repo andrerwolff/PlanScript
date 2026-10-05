@@ -230,9 +230,12 @@ class Project:
 
         if task not in self.tasks.values():
             raise ValueError(f"Task '{task.number}' does not exist in the project.")
-        if isinstance(dep_type, str):
+        if isinstance(con_type, str):
             con_type = ConstraintType(con_type)   
-        constraint = Constraint(task=task, con_type=con_type, con_date=con_date)
+        if self.start_date is None:
+            raise ValidationError(f"Project cannot be constrained without a start date.")
+        offset = con_date - self.start_date
+        constraint = Constraint(task=task, con_type=con_type, con_date=con_date, con_offset=offset)
         self.constraints.append(constraint)
     
 

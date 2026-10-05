@@ -12,9 +12,11 @@ from datetime import timedelta, date
 from dataclasses import dataclass
 
 from planscript.exceptions import SchedulingError
+from planscript.model.project import Project
 from planscript.model.schedule import Schedule
 from planscript.model.hierarchy import TaskHierarchy
 from planscript.model.dependency import DependencyType, DependencyGraph
+from planscript.model.constraint import Constraint, ConstraintType
 from collections import deque
 
 
@@ -123,11 +125,22 @@ class Scheduler:
 
                     candidate_es_values.append(candidate_es)
                 # 2. Apply start/finish constraints
-                candidate_es = self._apply_forward_constraints(task, candidate_es, project.constraints)
+                candidate_es = self._apply_forward_constraints(project, task, candidate_es)
                 early_start[task_id] = max(candidate_es_values)
             early_finish[task_id] = (early_start[task_id] + task.duration)
 
         return early_start, early_finish
+
+    def _apply_forward_constraints(self, project:Project , task, candidate_es):
+        for constraint in project.constraints:
+            if task is not constraint.task:
+                continue
+            if constraint.con_type == ConstraintType.START_NO_EARLIER_THAN:
+                candidate_es = max(candidate_es, constraint.con_offset)
+            elif constraint.con_type == ConstraintType.FINISH_NO_EARLIER_THAN:
+                candidate_es = max(candidate_es, constraint.con_offset - task.duration)
+        return candidate_es
+
 
     def _backward_pass(self, project, graph, ordered_task_ids, early_finish) -> tuple[dict[str, timedelta], dict[str, timedelta], timedelta,]:
         """Calculate latest start and finish times using CPM.
@@ -180,6 +193,14 @@ class Scheduler:
                 late_start[task_id] = (late_finish[task_id] - task.duration)
 
         return late_start, late_finish, project_duration
+
+    def _apply_backward_constraint(self, project:Project, task):
+        for constraint in project.constraints:
+            if constraint.con_type == ConstraintType.START_NO_LATER_THAN:
+                late_start = min(late_start, constraint.con_offset)
+            elif constraint.con_type == ConstraintType.FINISH_NO_LATER_THAN:
+                late_finish = min(late_finish, constraint.con_offset)
+                late_start = late_finish - task.duration
 
     def _float(self, hierarchy, early_start, late_start) -> dict[str, timedelta | None]:
         """Calculate total float from early and late start times.

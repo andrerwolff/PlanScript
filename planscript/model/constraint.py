@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from datetime import date
+from datetime import date, timedelta
 
 from planscript.model.task import Task
 
@@ -12,9 +12,9 @@ class ConstraintType(Enum):
     MANDATORY_START = "MSON"
     MANDATORY_FINISH = "MFON"
 
-
 @dataclass
 class Constraint:
     task: Task
     con_type: ConstraintType
     con_date: date
+    con_offset: timedelta
