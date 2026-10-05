@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from planscript.model.hierarchy import TaskHierarchy
 from planscript.model.project import Project, ValidationError
+from planscript.model.constraint import Constraint, ConstraintType
 from planscript.model.dependency import Dependency, DependencyType
 from planscript.model.schedule import Schedule
 from planscript.model.task import Task
@@ -317,3 +318,82 @@ class TestScheduleAnnotations(unittest.TestCase):
         project.add_task(Task("1.1", "Free", timedelta(days=1), budget=Decimal("0")))
 
         project.validate()
+
+
+class TestProjectConstraints(unittest.TestCase):
+    """Constraints are attached to project tasks against the project start."""
+
+    def setUp(self):
+        self.project = Project("Constraints", start_date=date(2026, 1, 5))
+        self.task = Task("1", "A", timedelta(days=5))
+        self.project.add_task(self.task)
+
+    def test_add_constraint_records_type_and_date(self):
+        self.project.add_constraint(self.task, ConstraintType.START_NO_EARLIER_THAN,
+                                    date(2026, 1, 15))
+
+        constraint = self.project.constraints[0]
+        self.assertIs(constraint.task, self.task)
+        self.assertEqual(constraint.con_type, ConstraintType.START_NO_EARLIER_THAN)
+        self.assertEqual(constraint.con_date, date(2026, 1, 15))
+
+    def test_add_constraint_accepts_type_code_string(self):
+        self.project.add_constraint(self.task, "FNET", date(2026, 1, 10))
+
+        constraint = self.project.constraints[0]
+        self.assertEqual(constraint.con_type, ConstraintType.FINISH_NO_EARLIER_THAN)
+        self.assertEqual(constraint.con_date, date(2026, 1, 10))
+
+    def test_add_constraint_rejects_project_without_start_date(self):
+        dateless = Project("No Start")
+        dateless.add_task(Task("1", "A", timedelta(days=5)))
+
+        with self.assertRaisesRegex(ValidationError, "without a start date"):
+            dateless.add_constraint(dateless.tasks["1"], "SNET", date(2026, 1, 5))
+
+    def test_add_constraint_rejects_unknown_task(self):
+        with self.assertRaisesRegex(ValueError, "does not exist"):
+            self.project.add_constraint(Task("2", "Ghost", timedelta(days=1)),
+                                        "SNET", date(2026, 1, 5))
+
+    def test_add_constraint_rejects_unknown_type_code(self):
+        with self.assertRaises(ValueError):
+            self.project.add_constraint(self.task, "NOPE", date(2026, 1, 5))
+
+    def test_add_constraint_rejects_summary_task(self):
+        summary = Task("2", "Summary")
+        child = Task("2.1", "Child", timedelta(days=1))
+        self.project.add_task(summary)
+        self.project.add_task(child)
+
+        with self.assertRaisesRegex(ValidationError, "cannot have a constraint"):
+            self.project.add_constraint(summary, "SNET", date(2026, 1, 5))
+
+    def test_validate_rejects_summary_constraint(self):
+        summary = Task("2", "Summary")
+        child = Task("2.1", "Child", timedelta(days=1))
+        self.project.add_task(summary)
+        self.project.add_task(child)
+        # Bypass add-time checking by appending directly.
+        self.project.constraints.append(
+            Constraint(task=summary, con_type=ConstraintType.START_NO_EARLIER_THAN,
+                       con_date=date(2026, 1, 5)))
+
+        with self.assertRaisesRegex(ValidationError, "cannot have a constraint"):
+            self.project.validate()
+
+    def test_validate_rejects_constraint_for_unknown_task(self):
+        ghost = Task("9", "Ghost", timedelta(days=1))
+        self.project.constraints.append(
+            Constraint(task=ghost, con_type=ConstraintType.START_NO_EARLIER_THAN,
+                       con_date=date(2026, 1, 5)))
+
+        with self.assertRaisesRegex(ValidationError, "unknown task"):
+            self.project.validate()
+
+    def test_remove_task_also_removes_its_constraints(self):
+        self.project.add_constraint(self.task, "SNET", date(2026, 1, 15))
+
+        self.project.remove_task("1")
+
+        self.assertEqual(self.project.constraints, [])

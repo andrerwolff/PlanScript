@@ -9,15 +9,13 @@ based on their descendant tasks.
 """
 
 from datetime import timedelta, date
-from dataclasses import dataclass
 
 from planscript.exceptions import SchedulingError
-from planscript.model.project import Project
+from planscript.model.task import Task
 from planscript.model.schedule import Schedule
 from planscript.model.hierarchy import TaskHierarchy
 from planscript.model.dependency import DependencyType, DependencyGraph
-from planscript.model.constraint import Constraint, ConstraintType
-from collections import deque
+from planscript.model.constraint import ConstraintType
 
 
 class Scheduler:
@@ -38,15 +36,18 @@ class Scheduler:
 
         1. Build the task hierarchy.
         2. Topologically order tasks by dependency relationships.
-        3. Perform the CPM forward pass.
-        4. Perform the CPM backward pass.
-        5. Calculate total float.
-        6. Identify critical tasks and critical paths.
-        7. Convert CPM offsets to calendar dates when a start date exists.
+        3. Map constraint dates to CPM offsets keyed by task number.
+        4. Perform the CPM forward pass.
+        5. Perform the CPM backward pass.
+        6. Calculate total float.
+        7. Identify critical tasks and critical paths.
+        8. Convert CPM offsets to calendar dates when a start date exists.
 
         Raises:
             ValueError: If the project contains a circular dependency.
-            SchedulingError: If the project has no tasks to schedule.
+            SchedulingError: If the project has no tasks to schedule, has
+                constraints but no start date to anchor them to, or a
+                mandatory constraint the network cannot accommodate.
         """
         if not project.tasks:
             raise SchedulingError("Project has no tasks to schedule.")
@@ -54,8 +55,9 @@ class Scheduler:
         graph = DependencyGraph(project)
         hierarchy = TaskHierarchy(project.tasks)
         ordered_task_ids = graph.topological_sort()
-        early_start, early_finish = self._forward_pass(project, graph, ordered_task_ids)
-        late_start, late_finish, duration = self._backward_pass(project, graph, ordered_task_ids, early_finish)
+        constraint_index = self._constraint_index(project)
+        early_start, early_finish = self._forward_pass(project, graph, ordered_task_ids, constraint_index)
+        late_start, late_finish, duration = self._backward_pass(project, graph, ordered_task_ids, early_finish, constraint_index)
         total_float = self._float(hierarchy, early_start, late_start)
         critical_tasks = self._critical_tasks(total_float)
         critical_paths = self._find_critical_paths(project, critical_tasks, early_start, early_finish)
@@ -75,7 +77,39 @@ class Scheduler:
             finish_dates= finish_dates)
 
 
-    def _forward_pass(self, project, graph, ordered_task_ids) -> tuple[dict[str, timedelta], dict[str, timedelta]]:
+    def _constraint_index(self, project) -> dict[str, list[tuple[ConstraintType, timedelta]]]:
+        """Convert constraint dates to CPM offsets keyed by task number.
+
+        This is the calendar boundary: constraint dates are mapped to
+        offsets from the project's planned start once, so both passes
+        operate only on offsets. Start-side dates map directly
+        (`con_date − start_date`); finish-side dates map one day later for
+        leaf tasks, because a leaf task's calendar finish falls the day
+        before its early-finish offset. A milestone finishes on its start
+        day, so no adjustment applies to it. Keying by task number
+        attaches a constraint to its task the same way the rest of the
+        scheduler does, regardless of object identity.
+
+        Raises:
+            SchedulingError: If the project has constraints but no
+                project start date to anchor them to.
+        """
+
+        index: dict[str, list[tuple[ConstraintType, timedelta]]] = {}
+
+        if not project.constraints:
+            return index
+        if project.start_date is None:
+            raise SchedulingError("Project has constraints but no start date to anchor them to.")
+
+        for constraint in project.constraints:
+            offset = constraint.con_date - project.start_date
+            if constraint.con_type.constrains_finish and not constraint.task.is_milestone:
+                offset += timedelta(days=1)
+            index.setdefault(constraint.task.number, []).append((constraint.con_type, offset))
+        return index
+
+    def _forward_pass(self, project, graph, ordered_task_ids, constraint_index) -> tuple[dict[str, timedelta], dict[str, timedelta]]:
         """Calculate earliest start and finish times using CPM.
 
         Tasks are processed in dependency order. Each task's earliest start
@@ -99,7 +133,7 @@ class Scheduler:
 
             # 1. Calculate dependency-driven earliest start
             if not dependencies:
-                early_start[task_id] = timedelta(0)
+                candidate_es = timedelta(0)
 
             else:
                 candidate_es_values = []
@@ -125,24 +159,56 @@ class Scheduler:
 
                     candidate_es_values.append(candidate_es)
                 # 2. Apply start/finish constraints
-                candidate_es = self._apply_forward_constraints(project, task, candidate_es)
-                early_start[task_id] = max(candidate_es_values)
+                candidate_es = max(candidate_es_values)
+            candidate_es = self._apply_forward_constraints(constraint_index.get(task_id, []), task, candidate_es)
+            early_start[task_id] = candidate_es
             early_finish[task_id] = (early_start[task_id] + task.duration)
 
         return early_start, early_finish
 
-    def _apply_forward_constraints(self, project:Project , task, candidate_es):
-        for constraint in project.constraints:
-            if task is not constraint.task:
+    def _apply_forward_constraints(self, constraints: list[tuple[ConstraintType, timedelta]], task: Task, candidate_es: timedelta) -> timedelta:
+        """Move a candidate early start to satisfy this task's constraints.
+
+        Soft constraints (Start-No-Earlier-Than, Finish-No-Earlier-Than)
+        raise the candidate to the more restrictive of the network and the
+        constraint. Mandatory constraints (Mandatory Start, Mandatory
+        Finish) then pin the candidate exactly and raise SchedulingError
+        when the network cannot accommodate the pin. Mandatory constraints
+        are applied last so the outcome does not depend on the order the
+        constraints were added.
+        """
+        for con_type, offset in constraints:
+            if con_type == ConstraintType.START_NO_EARLIER_THAN:
+                candidate_es = max(candidate_es, offset)
+            elif con_type == ConstraintType.FINISH_NO_EARLIER_THAN:
+                candidate_es = max(candidate_es, offset - task.duration)
+
+        pinned_es = None
+        for con_type, offset in constraints:
+            if con_type == ConstraintType.MANDATORY_START:
+                pin = offset
+                boundary = "start"
+            elif con_type == ConstraintType.MANDATORY_FINISH:
+                pin = offset - task.duration
+                boundary = "finish"
+            else:
                 continue
-            if constraint.con_type == ConstraintType.START_NO_EARLIER_THAN:
-                candidate_es = max(candidate_es, constraint.con_offset)
-            elif constraint.con_type == ConstraintType.FINISH_NO_EARLIER_THAN:
-                candidate_es = max(candidate_es, constraint.con_offset - task.duration)
+
+            if pinned_es is None:
+                if candidate_es > pin:
+                    raise SchedulingError(
+                        f"Task '{task.number}' violates mandatory {boundary} constraint.")
+                pinned_es = pin
+            elif pinned_es != pin:
+                raise SchedulingError(
+                    f"Task '{task.number}' has conflicting mandatory constraints.")
+
+        if pinned_es is not None:
+            candidate_es = pinned_es
         return candidate_es
 
 
-    def _backward_pass(self, project, graph, ordered_task_ids, early_finish) -> tuple[dict[str, timedelta], dict[str, timedelta], timedelta,]:
+    def _backward_pass(self, project, graph, ordered_task_ids, early_finish, constraint_index) -> tuple[dict[str, timedelta], dict[str, timedelta], timedelta,]:
         """Calculate latest start and finish times using CPM.
 
         Tasks are processed in reverse dependency order. The project
@@ -192,15 +258,55 @@ class Scheduler:
                 late_finish[task_id] = min(candidate_lf_values)
                 late_start[task_id] = (late_finish[task_id] - task.duration)
 
+                late_start[task_id], late_finish[task_id] = (
+                    self._apply_backward_constraints(constraint_index.get(task_id, []), task, late_start[task_id], late_finish[task_id]))
+
         return late_start, late_finish, project_duration
 
-    def _apply_backward_constraint(self, project:Project, task):
-        for constraint in project.constraints:
-            if constraint.con_type == ConstraintType.START_NO_LATER_THAN:
-                late_start = min(late_start, constraint.con_offset)
-            elif constraint.con_type == ConstraintType.FINISH_NO_LATER_THAN:
-                late_finish = min(late_finish, constraint.con_offset)
+    def _apply_backward_constraints(self, constraints: list[tuple[ConstraintType, timedelta]], task: Task, late_start: timedelta, late_finish: timedelta) -> tuple[timedelta, timedelta]:
+        """Pull candidate late dates in to satisfy this task's constraints.
+
+        Soft constraints (Start-No-Later-Than, Finish-No-Later-Than) pull
+        the candidates in to the more restrictive of the network and the
+        constraint. Mandatory constraints then pin the dates exactly and
+        raise SchedulingError when the network cannot accommodate the pin,
+        applied last so the outcome does not depend on the order the
+        constraints were added. A task pinned by a mandatory constraint
+        therefore carries zero total float.
+        """
+        for con_type, offset in constraints:
+            if con_type == ConstraintType.START_NO_LATER_THAN:
+                late_start = min(late_start, offset)
+                late_finish = late_start + task.duration
+            elif con_type == ConstraintType.FINISH_NO_LATER_THAN:
+                late_finish = min(late_finish, offset)
                 late_start = late_finish - task.duration
+
+        pinned_lf = None
+        for con_type, offset in constraints:
+            if con_type == ConstraintType.MANDATORY_START:
+                pin = offset + task.duration
+                boundary = "start"
+            elif con_type == ConstraintType.MANDATORY_FINISH:
+                pin = offset
+                boundary = "finish"
+            else:
+                continue
+
+            if pinned_lf is None:
+                if late_finish < pin:
+                    raise SchedulingError(
+                        f"Task '{task.number}' violates mandatory {boundary} constraint.")
+                pinned_lf = pin
+            elif pinned_lf != pin:
+                raise SchedulingError(
+                    f"Task '{task.number}' has conflicting mandatory constraints.")
+
+        if pinned_lf is not None:
+            late_finish = pinned_lf
+            late_start = late_finish - task.duration
+
+        return late_start, late_finish
 
     def _float(self, hierarchy, early_start, late_start) -> dict[str, timedelta | None]:
         """Calculate total float from early and late start times.
@@ -219,11 +325,17 @@ class Scheduler:
         return total_float
 
     def _critical_tasks(self, total_float: dict[str, timedelta | None]) -> list[str]:
-        """Return tasks with zero total float."""
+        """Return tasks with zero or negative total float.
+
+        Negative total float appears when a soft constraint cannot be met
+        without pushing a task past dates the network forbids. Those tasks
+        are over-constrained and stay critical so they remain visible in
+        critical paths and the Gantt.
+        """
 
         critical_tasks = []
         for task_id in total_float:
-            if total_float[task_id] == timedelta(0):
+            if total_float[task_id] is not None and total_float[task_id] <= timedelta(0):
                 critical_tasks.append(task_id)
         return critical_tasks
 

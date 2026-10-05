@@ -383,6 +383,305 @@ def negative_lag():
 
     return project
     
+def start_no_earlier_than():
+    """
+    Test 14 - Start No Earlier Than (soft)
+
+    14.1 (5d) → 14.2 (3d) → 14.3 (4d)
+
+    SNET on 14.2 at offset 2 is weaker than its dependency (offset 5),
+    so the dependency wins.
+    SNET on 14.3 at offset 14 is stronger than its dependency (offset 8),
+    so the constraint wins and extends the project.
+
+    Expected duration: 18 days
+    Critical path: 14.3
+    """
+
+    project = Project("Test 14 - Start No Earlier Than", start_date=date(2026, 1, 5))
+
+    a = Task("14.1", "A", timedelta(days=5))
+    b = Task("14.2", "B", timedelta(days=3))
+    c = Task("14.3", "C", timedelta(days=4))
+
+    for task in [a, b, c]:
+        project.add_task(task)
+
+    project.add_dependency(predecessor=a, successor=b)
+    project.add_dependency(predecessor=b, successor=c)
+
+    project.add_constraint(b, "SNET", date(2026, 1, 7))
+    project.add_constraint(c, "SNET", date(2026, 1, 19))
+
+    return project
+
+
+def finish_no_earlier_than():
+    """
+    Test 15 - Finish No Earlier Than (soft)
+
+    15.1 (4d) → 15.2 (2d) → 15.3 (3d)
+
+    FNET on 15.2 (finish no earlier than 2026-01-08) is weaker than its
+    dependency (finish 2026-01-10), so the dependency wins.
+    FNET on 15.3 (finish no earlier than 2026-01-15) is stronger than its
+    dependency (finish 2026-01-13), so the constraint wins and opens a
+    two-day gap after 15.2.
+
+    Expected duration: 11 days
+    Critical path: 15.3
+    """
+
+    project = Project("Test 15 - Finish No Earlier Than", start_date=date(2026, 1, 5))
+
+    a = Task("15.1", "A", timedelta(days=4))
+    b = Task("15.2", "B", timedelta(days=2))
+    c = Task("15.3", "C", timedelta(days=3))
+
+    for task in [a, b, c]:
+        project.add_task(task)
+
+    project.add_dependency(predecessor=a, successor=b)
+    project.add_dependency(predecessor=b, successor=c)
+
+    project.add_constraint(b, "FNET", date(2026, 1, 8))
+    project.add_constraint(c, "FNET", date(2026, 1, 15))
+
+    return project
+
+
+def start_no_later_than():
+    """
+    Test 16 - Start No Later Than (soft)
+
+    16.1 (3d) → 16.2 (4d)
+    16.3 (10d)            (no dependencies)
+
+    SNLT on 16.2 at offset 5 binds (its late start would otherwise be 6),
+    consuming float from 16.2 and its predecessor 16.1.
+    SNLT on 16.1 at offset 4 is weaker than its dependency-driven late
+    start (2), so the dependency wins.
+
+    Expected duration: 10 days (late-side constraint, early dates unchanged)
+    Critical path: 16.3
+    """
+
+    project = Project("Test 16 - Start No Later Than", start_date=date(2026, 1, 5))
+
+    a = Task("16.1", "A", timedelta(days=3))
+    b = Task("16.2", "B", timedelta(days=4))
+    c = Task("16.3", "C", timedelta(days=10))
+
+    for task in [a, b, c]:
+        project.add_task(task)
+
+    project.add_dependency(predecessor=a, successor=b)
+
+    project.add_constraint(a, "SNLT", date(2026, 1, 9))
+    project.add_constraint(b, "SNLT", date(2026, 1, 10))
+
+    return project
+
+
+def finish_no_later_than():
+    """
+    Test 17 - Finish No Later Than (soft)
+
+    17.1 (3d) → 17.2 (4d)
+    17.3 (10d)            (no dependencies)
+
+    FNLT on 17.2 (finish no later than 2026-01-13) binds; its late finish
+    would otherwise be the project duration (finish 2026-01-15),
+    consuming float from 17.2 and its predecessor 17.1.
+    FNLT on 17.1 (finish no later than 2026-01-11) is weaker than the late
+    finish its dependency now imposes (2026-01-09), so the dependency wins.
+
+    Expected duration: 10 days (late-side constraint, early dates unchanged)
+    Critical path: 17.3
+    """
+
+    project = Project("Test 17 - Finish No Later Than", start_date=date(2026, 1, 5))
+
+    a = Task("17.1", "A", timedelta(days=3))
+    b = Task("17.2", "B", timedelta(days=4))
+    c = Task("17.3", "C", timedelta(days=10))
+
+    for task in [a, b, c]:
+        project.add_task(task)
+
+    project.add_dependency(predecessor=a, successor=b)
+
+    project.add_constraint(a, "FNLT", date(2026, 1, 11))
+    project.add_constraint(b, "FNLT", date(2026, 1, 13))
+
+    return project
+
+def infeasible_finish_no_later_than():
+    """
+    Test 18 - Infeasible Finish No Later Than (soft)
+
+    18.1 (5d) → 18.2 (5d)
+
+    FNLT on 18.2 (finish no later than 2026-01-10) cannot be met: 18.2
+    cannot finish before 2026-01-14. The constraint is soft, so early
+    dates hold and the unsatisfiable constraint surfaces as negative
+    total float.
+
+    Expected duration: 10 days
+    Critical path: 18.1 → 18.2 (both negative float)
+    """
+
+    project = Project("Test 18 - Infeasible Finish No Later Than", start_date=date(2026, 1, 5))
+
+    a = Task("18.1", "A", timedelta(days=5))
+    b = Task("18.2", "B", timedelta(days=5))
+
+    for task in [a, b]:
+        project.add_task(task)
+
+    project.add_dependency(predecessor=a, successor=b)
+
+    project.add_constraint(b, "FNLT", date(2026, 1, 10))
+
+    return project
+
+def mandatory_start():
+    """
+    Test 19 - Mandatory Start
+
+    19.1 (5d) → 19.2 (3d)
+
+    MSON on 19.1 at the project start is the boundary case: the network
+    already starts it there, so nothing raises.
+    MSON on 19.2 on 2026-01-13 pins it to start later (offset 8) than its
+    dependency allows (offset 5).
+
+    Expected duration: 11 days
+    Critical paths: 19.1 and 19.2 (mandatory dates leave no float)
+    """
+
+    project = Project("Test 19 - Mandatory Start", start_date=date(2026, 1, 5))
+
+    a = Task("19.1", "A", timedelta(days=5))
+    b = Task("19.2", "B", timedelta(days=3))
+
+    for task in [a, b]:
+        project.add_task(task)
+
+    project.add_dependency(predecessor=a, successor=b)
+
+    project.add_constraint(a, "MSON", date(2026, 1, 5))
+    project.add_constraint(b, "MSON", date(2026, 1, 13))
+
+    return project
+
+
+def mandatory_finish():
+    """
+    Test 20 - Mandatory Finish
+
+    20.1 (4d) → 20.2 (6d)
+
+    MFON on 20.1 on 2026-01-14 pins its finish later than its own start
+    would place it; the whole chain shifts with it.
+
+    Expected duration: 16 days
+    Critical path: 20.1 → 20.2
+    """
+
+    project = Project("Test 20 - Mandatory Finish", start_date=date(2026, 1, 5))
+
+    a = Task("20.1", "A", timedelta(days=4))
+    b = Task("20.2", "B", timedelta(days=6))
+
+    for task in [a, b]:
+        project.add_task(task)
+
+    project.add_dependency(predecessor=a, successor=b)
+
+    project.add_constraint(a, "MFON", date(2026, 1, 14))
+
+    return project
+
+
+def mandatory_start_conflict():
+    """
+    Test 21 - Mandatory Start Conflict
+
+    21.1 (10d) → 21.2 (5d)
+
+    MSON on 21.2 on 2026-01-09 demands a start earlier than its
+    dependency permits, so scheduling must fail.
+    """
+
+    project = Project("Test 21 - Mandatory Start Conflict", start_date=date(2026, 1, 5))
+
+    a = Task("21.1", "A", timedelta(days=10))
+    b = Task("21.2", "B", timedelta(days=5))
+
+    for task in [a, b]:
+        project.add_task(task)
+
+    project.add_dependency(predecessor=a, successor=b)
+
+    project.add_constraint(b, "MSON", date(2026, 1, 9))
+
+    return project
+
+
+def mandatory_finish_conflict():
+    """
+    Test 22 - Mandatory Finish Conflict
+
+    22.1 (10d) → 22.2 (5d)
+
+    MFON on 22.2 on 2026-01-12 demands a finish its dependency cannot
+    allow (22.2 cannot even start until offset 10), so scheduling must
+    fail.
+    """
+
+    project = Project("Test 22 - Mandatory Finish Conflict", start_date=date(2026, 1, 5))
+
+    a = Task("22.1", "A", timedelta(days=10))
+    b = Task("22.2", "B", timedelta(days=5))
+
+    for task in [a, b]:
+        project.add_task(task)
+
+    project.add_dependency(predecessor=a, successor=b)
+
+    project.add_constraint(b, "MFON", date(2026, 1, 12))
+
+    return project
+
+
+def mandatory_start_backward_conflict():
+    """
+    Test 23 - Mandatory Start vs a Successor Constraint
+
+    23.1 (5d) → 23.2 (5d)
+
+    MSON on 23.1 on 2026-01-10 pins it to finish at offset 10, but SNLT
+    on 23.2 on 2026-01-12 forces 23.2 to start by offset 7, so 23.1 must
+    finish by then. The forward pass is happy; the backward pass must
+    fail.
+    """
+
+    project = Project("Test 23 - Mandatory Start Backward Conflict", start_date=date(2026, 1, 5))
+
+    a = Task("23.1", "A", timedelta(days=5))
+    b = Task("23.2", "B", timedelta(days=5))
+
+    for task in [a, b]:
+        project.add_task(task)
+
+    project.add_dependency(predecessor=a, successor=b)
+
+    project.add_constraint(a, "MSON", date(2026, 1, 10))
+    project.add_constraint(b, "SNLT", date(2026, 1, 12))
+
+    return project
+
 TEST_PROJECTS = {
     "1": simple_linear,
     "2": parallel_work,
@@ -397,6 +696,16 @@ TEST_PROJECTS = {
     "11": disconnected_networks,
     "12": competing_constraints,
     "13": negative_lag,
+    "14": start_no_earlier_than,
+    "15": finish_no_earlier_than,
+    "16": start_no_later_than,
+    "17": finish_no_later_than,
+    "18": infeasible_finish_no_later_than,
+    "19": mandatory_start,
+    "20": mandatory_finish,
+    "21": mandatory_start_conflict,
+    "22": mandatory_finish_conflict,
+    "23": mandatory_start_backward_conflict,
 }
 
 def finish_start():

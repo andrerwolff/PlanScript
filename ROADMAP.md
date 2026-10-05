@@ -72,9 +72,9 @@ Work items are tagged with the modules they touch.
 
 **Quality baseline**
 
-* 225 `unittest` tests covering parser errors, CPM examples,
-  dependency types, tracking, budgets, variance, reports, data-date behavior,
-  and CLI behavior.
+* 248 `unittest` tests covering parser errors, CPM examples,
+  dependency types, soft and mandatory constraints, tracking, budgets,
+  variance, reports, data-date behavior, and CLI behavior.
 
 ---
 
@@ -225,9 +225,16 @@ These require the prior decisions in
   explicitly reported progress (`DESIGN.md`, Tracking design).
 * **P3-11** Additional lifecycle events (`reopen`, pause/resume), once the
   tracking model is stable.
-* **P3-12** Task-level constraints (start-no-earlier-than, finish-no-later-than)
-  with the target-vs-constraint distinction preserved, evaluated against
-  portfolio targets such as `Project.finish_date`.
+* **P3-12** Constraints follow-through: the four soft (`SNET`, `SNLT`,
+  `FNET`, `FNLT`) and two mandatory (`MSON`, `MFON`) task-level constraints
+  are implemented in the model and scheduler (programmatic only; no
+  authoring syntax yet). Remaining: authoring syntax, reporting them, and
+  evaluating them against portfolio targets such as `Project.finish_date`
+  while preserving the target-vs-constraint distinction.
+* **P3-17** Over-constrained reporting: surface tasks with negative total float
+  (a soft constraint the network cannot honour) as a task state in the `status`
+  report, so infeasible constraints are visible beyond the critical-path and
+  Gantt views.
 
 ## P3 — Interfaces and interoperability
 
@@ -286,8 +293,7 @@ each one is a decision waiting to be made, not an oversight.
 * **Tests first for defects.** Every P0/P1 item lands with a test that fails
   before the change.
 * **Keep the suite green.** `python -m unittest discover -s planscript/tests -t .`
-  must pass before a commit; the current baseline is 225 tests (one known
-  failure awaiting P1-3 section rendering).
+  must pass before a commit; the current baseline is 248 tests.
 * **No new runtime dependencies** without an explicit decision; `unittest` is
   the test framework.
 * **Validation ownership.** Syntax and structure in the parser, model legality

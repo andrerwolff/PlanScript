@@ -24,8 +24,10 @@ from enum import Enum
 from datetime import date, timedelta
 
 from planscript.model.project import Project
+from planscript.model.schedule import Schedule
 from planscript.engine.tracker import TaskStatus, TaskState, Invoice
 from planscript.engine.analyzer import Analyzer
+from planscript.engine.forecaster import Forecaster
 from planscript.exceptions import SchedulingError
 
 CURRENCY = Decimal("0.01")
@@ -423,14 +425,15 @@ class ReportBuilder:
                 "No project start date is available for date projection."
             )
         analysis = Analyzer(self.project, self.as_of)
-        summary = self._task_summary(analysis, self.as_of, self.look_ahead)
+        forecast = Forecaster().forecast(project=self.project, as_of=self.as_of)
+        summary = self._task_summary(analysis, forecast, self.as_of, self.look_ahead)
 
 
         return ProjectReport(
             name=self.project.name,
             status=self._project_status(),
             as_of=self.as_of,
-            schedule_report=self._project_schedule_report(analysis),
+            schedule_report=self._project_schedule_report(analysis, forecast),
             budget_report=self._project_budget_report(analysis),
             progress_report=self._project_progress_report(analysis),
             all_tasks=summary["all"],
@@ -497,7 +500,7 @@ class ReportBuilder:
 
         return ProjectStatus.IN_PROGRESS
 
-    def _task_summary(self, analysis, as_of: date, look_ahead: timedelta):
+    def _task_summary(self, analysis, forecast:Schedule, as_of: date, look_ahead: timedelta):
         all_tasks = []
         overdues = []
         blocked = []
@@ -508,7 +511,7 @@ class ReportBuilder:
 
         for task_id in self.project.schedule.hierarchy.get_leaf_ids():
             state = self.project.tracker.get_task_state(task_id, as_of)
-            task_report = self._task_report(analysis, task_id, state, as_of)
+            task_report = self._task_report(analysis, forecast, task_id, state, as_of)
             schedule_report = task_report.schedule_report
 
             all_tasks.append(task_report)
@@ -536,7 +539,7 @@ class ReportBuilder:
                    "starts": upcoming_starts, "charged": charged_tasks}
         return summary
 
-    def _task_report(self, analysis, task_id, state, as_of) -> TaskReport:
+    def _task_report(self, analysis, forecast:Schedule, task_id, state, as_of) -> TaskReport:
         task = self.project.tasks[task_id]
         schedule_condition = self._schedule_condition(task_id, state, as_of)
         #budget_condition = self._budget_condition(task_id, state, as_of)
@@ -562,7 +565,7 @@ class ReportBuilder:
         return TaskReport(
             task_id=task_id,
             name=task.name,
-            schedule_report=self._task_schedule_report(analysis, task_id, state, schedule_condition),
+            schedule_report=self._task_schedule_report(analysis, forecast, task_id, state, schedule_condition),
             budget_report=self._task_budget_report(analysis, task_id),
             progress_report=self._task_progress_report(analysis, task_id),
 
@@ -610,14 +613,17 @@ class ReportBuilder:
         
         return ScheduleCondition.ON_SCHEDULE
 
-    def _project_schedule_report(self, analysis:Analyzer) -> ProjectScheduleReport:
-
-        return ProjectScheduleReport(planned_start=self.project.start_date,
-                                     planned_finish=self.project.finish_date,
+    def _project_schedule_report(self, analysis:Analyzer, forecast:Schedule) -> ProjectScheduleReport:
+        planned_finish = self.project.finish_date
+        planned_start = self.project.start_date
+        forecast_finish = planned_start + forecast.duration
+        schedule_variance = forecast_finish - planned_finish
+        return ProjectScheduleReport(planned_start=planned_start,
+                                     planned_finish=planned_finish,
                                      planned_duration=self.project.schedule.duration,
                                      actual_start=analysis.project_actual_start(),
-                                     forecast_finish=None,
-                                     schedule_variance=None)
+                                     forecast_finish=forecast_finish,
+                                     schedule_variance=schedule_variance)
 
     def _project_budget_report(self, analysis:Analyzer) -> ProjectBudgetReport:
         """Report project money to the data date.
@@ -635,24 +641,31 @@ class ReportBuilder:
                                      actual_progress=analysis.actual_project_progress(),
                                      budget_consumed=analysis.project_consumed_cost())
 
-    def _task_schedule_report(self, analysis:Analyzer, task_id, state:TaskState, condition:ScheduleCondition) -> TaskScheduleReport:
+    def _task_schedule_report(self, analysis:Analyzer, forecast:Schedule, task_id, state:TaskState, condition:ScheduleCondition) -> TaskScheduleReport:
         schedule = self.project.schedule
         tracker = self.project.tracker
+
+        planned_duration = self.project.tasks[task_id].duration
+        forecast_finish = forecast.finish_dates[task_id]
+        forecast_start = forecast.start_dates[task_id]
+        forecast_duration = forecast_finish - forecast_start
+        forecast_variance = forecast_duration - planned_duration
+        
         return TaskScheduleReport(state=state,
             schedule_condition=condition,
             planned_start=schedule.start_dates[task_id],
             planned_finish=schedule.finish_dates[task_id],
-            planned_duration=self.project.tasks[task_id].duration,
+            planned_duration=planned_duration,
         
             actual_start=tracker.actual_start(task_id, self.as_of),
             actual_finish=tracker.actual_finish(task_id, self.as_of),
             actual_duration=tracker.actual_duration(task_id, self.as_of),
             duration_variance=analysis.duration_variance(task_id),
-        
-            forecast_start=None,
-            forecast_finish=None,
-            forecast_duration=None,
-            forecast_variance=None)
+            
+            forecast_start=forecast_start,
+            forecast_finish=forecast_finish,
+            forecast_duration=forecast_duration,
+            forecast_variance=forecast_variance)
 
     def _task_budget_report(self, analysis:Analyzer, task_id) -> TaskBudgetReport:
         """Report a task's planned and actual money to the data date.

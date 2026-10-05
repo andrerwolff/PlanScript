@@ -77,6 +77,7 @@ wired into the CLI; see `planscript/serializer/`.)
 | `planscript/model/project.py` | `Project` aggregate root and project-level validation. |
 | `planscript/model/task.py` | `Task` (number, name, duration, budget, metadata). |
 | `planscript/model/dependency.py` | `Dependency`, `DependencyType`, `DependencyGraph`. |
+| `planscript/model/constraint.py` | `Constraint`, `ConstraintType`: task-level schedule constraints. |
 | `planscript/model/hierarchy.py` | `TaskHierarchy` derived from task numbers. |
 | `planscript/model/calendar.py` | `Calendar` (working days, holidays). Model only; not yet applied. |
 | `planscript/model/budget.py` | `Budget` (resolved/derived budget). |
@@ -85,11 +86,12 @@ wired into the CLI; see `planscript/serializer/`.)
 | `planscript/engine/tracker.py` | `Tracker`, `TaskEvent`, `TaskState`, `Invoice`, directives and statuses. |
 | `planscript/engine/analyzer.py` | `Analyzer`, `TaskVariance`: planned vs. actual variance and progress. |
 | `planscript/engine/budgeter.py` | `Budgeter`: resolves explicit and weighted budgets. |
+| `planscript/engine/forecaster.py` | `Forecaster`: forecast schedule from actuals, pinning actuals with mandatory constraints. |
 | `planscript/engine/reporter.py` | `ReportBuilder` and report dataclasses for status reporting. |
 | `planscript/cli/display.py` | Table rendering, schedule/budget views, legacy interactive menus. |
 | `planscript/cli/gantt.py` | Textual Gantt rendering. |
 | `planscript/serializer/plan_serializer.py` | `Project` → `.plan` text. Incomplete; not wired into the CLI. |
-| `planscript/tests/` | `unittest` suite (225 tests) plus shared project fixtures. |
+| `planscript/tests/` | `unittest` suite (248 tests) plus shared project fixtures. |
 | `_archive/` | Superseded interactive CLI and the original standalone invoice model. |
 
 ## Model
@@ -108,19 +110,20 @@ task number keeps its dependencies attached.
 | `calendar` | `str \| None` | Calendar name from the `calendar:` attribute; stored, not interpreted. |
 | `tasks` | `dict[str, Task]` | Keyed by task number, kept sorted by number. |
 | `dependencies` | `list[Dependency]` | All dependency relationships. |
+| `constraints` | `list[Constraint]` | Task-level schedule constraints; dates are mapped to CPM offsets at schedule time. |
 | `calendars` | `dict[str, Calendar]` | Declared calendars. Currently always empty. |
 | `budget` | `Budget` | Derived; populated by `Budgeter`. |
 | `schedule` | `Schedule \| None` | Derived; populated by `Scheduler`. |
 | `tracker` | `Tracker` | Authoritative tracking history and derived state. |
 | `metadata` | `dict` | Project-level descriptive metadata. |
 
-Operations: `add_task`, `remove_task` (also removes its dependencies),
-`renumber_task`, `sort_tasks`, `list_tasks`, `add_dependency`,
-`remove_dependency`, `get_predecessors`, `get_successors`,
+Operations: `add_task`, `remove_task` (also removes its dependencies and
+constraints), `renumber_task`, `sort_tasks`, `list_tasks`, `add_dependency`,
+`remove_dependency`, `add_constraint`, `get_predecessors`, `get_successors`,
 `get_incoming_dependencies`, `get_outgoing_dependencies`, `validate`.
 
 `Project.validate()` is the single entry point for model validation and runs
-date, summary, dependency, budget, duration, and tracking checks.
+date, summary, dependency, constraint, budget, duration, and tracking checks.
 
 ### `Task`
 
@@ -150,6 +153,33 @@ implemented.
 (`predecessors`/`successors` keyed by task ID). `topological_sort()` returns
 task IDs in dependency order and raises `ValueError` if the graph contains a
 cycle.
+
+### `Constraint` and constraint types
+
+| Attribute | Type | Notes |
+| --- | --- | --- |
+| `task` | `Task` | Task the constraint applies to. Leaf tasks only; summary tasks are rejected. |
+| `con_type` | `ConstraintType` | Soft: `SNET`, `SNLT`, `FNET`, `FNLT`. Mandatory (hard): `MSON`, `MFON`. |
+| `con_date` | `date` | Authoritative calendar anchor, stored as authored. |
+
+Constraints require a project `start_date` to anchor them to. The scheduler
+maps `con_date` to an offset from `start_date` before the passes, so no
+offset is stored and reassigning `start_date` cannot leave stale derived
+data behind. Start-side dates map directly (`con_date − start_date`);
+finish-side dates map one day later for leaf tasks, because a leaf task's
+calendar finish falls the day before its early-finish offset — a milestone
+finishes on its start day, so no adjustment applies to it. Only leaf tasks
+(including milestones) may carry a constraint — a summary task's dates are
+derived from its children, so a constraint there would never change the
+schedule.
+
+Soft constraints resolve to the more restrictive of the network and the
+constraint. Mandatory constraints pin the date exactly — in both the early
+and the late dates, so a mandatory task always carries zero total float —
+and raise `SchedulingError` when the network cannot accommodate the pin or
+when two mandatory constraints on one task demand different pins. The
+`Forecaster` uses mandatory constraints to pin completed tasks to their
+actual finish and in-progress tasks to their actual start.
 
 ### `TaskHierarchy`
 
@@ -225,10 +255,22 @@ positive when later than planned; cost variance is positive when over budget.
    * `FF`: `EF(succ) = EF(pred) + lag`, then `ES = EF − duration`
    * `SF`: `EF(succ) = ES(pred) + lag`, then `ES = EF − duration`
    Tasks with no predecessors start at offset 0. `EF = ES + duration`.
+   Soft constraints then raise the candidate: `SNET` with the constraint
+   offset, `FNET` with the offset less the duration. Mandatory constraints
+   are applied last: `MSON`/`MFON` pin the candidate exactly and raise
+   `SchedulingError` when the network pushes past the pin, so the outcome
+   does not depend on the order constraints were added.
 4. **Backward pass** — project duration is the maximum early finish; latest
-   finish starts there and propagates back through successors.
+   finish starts there and propagates back through successors. Soft
+   constraints then pull the candidates in: `SNLT` on the late start, `FNLT`
+   on the late finish. Mandatory constraints then pin the late dates to the
+   same pins (or raise), which is what leaves a mandatory task with zero
+   float. In both passes the more restrictive of the network
+   and the constraint wins.
 5. **Float** — `total_float = LS − ES`. Summary tasks get `None`.
-6. **Critical tasks** — total float exactly zero.
+6. **Critical tasks** — total float zero or negative. Negative float means a
+   soft constraint cannot be met without violating the network; those tasks
+   are over-constrained and stay critical so they remain visible.
 7. **Critical paths** — walks the sub-graph of critical tasks connected by
    *tight* dependencies (those that actually impose the successor's early
    start). Branches produce multiple paths.
@@ -246,6 +288,13 @@ Rules and current limits:
   print a note, `Analyzer` variance and `ReportBuilder` raise
   `SchedulingError`, and the `status` command exits `1`.
 * Summary tasks are excluded from CPM and only receive rolled-up dates.
+* Constraint dates are converted to offsets from `start_date` before the
+  passes (the calendar boundary), so a project with constraints but no
+  `start_date` raises `SchedulingError`.
+* Soft constraints take the more restrictive value; mandatory constraints
+  pin both the early and the late dates, so a mandatory task always carries
+  zero float, and raise `SchedulingError` when the network cannot
+  accommodate the pin.
 
 ### `Tracker` — actuals
 
@@ -497,7 +546,8 @@ the rule:
    lines.
 2. **Model** (`ValidationError`, via `Project.validate()`) — project start
    after finish, summary tasks with durations, leaf tasks without durations,
-   dependencies touching summary tasks, cycles, negative durations, budget
+   dependencies touching summary tasks, cycles, negative durations, constraints
+   on summary tasks or unknown tasks, budget
    legality (explicit vs. weighted, sibling consistency, weight totals,
    percentage bounds, budgeted ancestor required), and tracking references and
    invoice allocation totals.
@@ -505,14 +555,13 @@ the rule:
    rules when a `TaskState` is derived (start once, no progress before start,
    no progress after complete, complete once, 0–100%).
 4. **Engines** (`SchedulingError`, `BudgetingError`) — nothing to schedule or
-   budget, and weighted budgets with no allocatable ancestor.
+   budget, weighted budgets with no allocatable ancestor, and mandatory
+   constraints the network cannot accommodate.
 
 ## Testing
 
 The suite uses Python's built-in `unittest`; there is no third-party test
-dependency. Currently **225 tests**; all pass except one assertion in
-`test_agreed_cli_regressions` that awaits the section rendering of
-`ROADMAP.md` P1-3.
+dependency. Currently **248 tests**; all pass.
 
 ```powershell
 python -m unittest discover -s planscript/tests -t .
@@ -521,8 +570,8 @@ python -m unittest discover -s planscript/tests -t .
 | Test module | Focus |
 | --- | --- |
 | `test_parser.py` | Project/task/metadata/budget/dependency syntax, error messages, line references. |
-| `test_model.py` | `TaskHierarchy` behavior and budget validation rules. |
-| `test_scheduler.py` | CPM examples across dependency types, branching, merging, float, critical paths. |
+| `test_model.py` | `TaskHierarchy` behavior, budget validation, and constraint validation rules. |
+| `test_scheduler.py` | CPM examples across dependency types, branching, merging, float, critical paths, and soft and mandatory constraints. |
 | `test_tracking.py` | Event parsing, lifecycle/derivation rules, actual dates and costs. |
 | `test_budgeter.py` | Explicit, weighted, nested, rollup, remainder-cent, and unallocated cases. |
 | `test_performance.py` | Variance calculations against tracked plans. |

@@ -21,7 +21,7 @@ from planscript.model.task import Task
 from planscript.model.hierarchy import TaskHierarchy
 from planscript.model.budget import Budget
 from planscript.engine.tracker import Tracker
-from planscript.engine.scheduler import Schedule
+from planscript.model.schedule import Schedule
 
 @dataclass
 class Project:
@@ -107,7 +107,15 @@ class Project:
                 dependencies_to_remove.append(dependency)
         for dependency in dependencies_to_remove:
             self.remove_dependency(dependency)
-                
+
+        # Remove related constraints
+        constraints_to_remove = []
+        for constraint in self.constraints:
+            if constraint.task == self.tasks[task_number]:
+                constraints_to_remove.append(constraint)
+        for constraint in constraints_to_remove:
+            self.constraints.remove(constraint)
+
         try:
             del self.tasks[task_number]
             #print(f"Task '{task_number}' removed from project '{self.name}'.")
@@ -227,15 +235,27 @@ class Project:
         return outgoing_dependencies
 
     def add_constraint(self, task, con_type, con_date) -> None:
+        """Attach a schedule constraint to a project task.
+
+        The constraint's calendar date is recorded as authored; the
+        scheduler converts it to an offset from the project's start date
+        at schedule time.
+
+        Raises:
+            ValueError: If the task is not in the project.
+            ValidationError: If the task is a summary task, or the
+                project has no start date to anchor the constraint to.
+        """
 
         if task not in self.tasks.values():
             raise ValueError(f"Task '{task.number}' does not exist in the project.")
+        if task.duration is None:
+            raise ValidationError(f"Summary task '{task.number}' cannot have a constraint; its dates are derived from its children.")
         if isinstance(con_type, str):
-            con_type = ConstraintType(con_type)   
+            con_type = ConstraintType(con_type)
         if self.start_date is None:
             raise ValidationError(f"Project cannot be constrained without a start date.")
-        offset = con_date - self.start_date
-        constraint = Constraint(task=task, con_type=con_type, con_date=con_date, con_offset=offset)
+        constraint = Constraint(task=task, con_type=con_type, con_date=con_date)
         self.constraints.append(constraint)
     
 
@@ -243,7 +263,7 @@ class Project:
         """Validate the internal consistency of the project.
 
         Validation covers project dates, task hierarchy, summary-task rules,
-        dependencies, task durations, and tracking references.
+        dependencies, constraints, task durations, and tracking references.
 
         Validation raises ValidationError on the first detected violation.
         """
@@ -255,7 +275,24 @@ class Project:
         self._validate_dependencies(hierarchy)
         self._validate_budget(hierarchy)
         self._validate_task_durations()
+        self._validate_constraints()
         self._validate_tracker()
+
+    def _validate_constraints(self) -> None:
+        """Validate that constraints attach to schedulable project tasks.
+
+        Constraints move a task's scheduled dates, so only leaf tasks
+        (including milestones) can carry one; summary dates are derived
+        from their children.
+        """
+
+        for constraint in self.constraints:
+            task = self.tasks.get(constraint.task.number)
+
+            if task is None:
+                raise ValidationError(f"Constraint references unknown task '{constraint.task.number}'.")
+            if task.duration is None:
+                raise ValidationError(f"Summary task '{task.number}' cannot have a constraint; its dates are derived from its children.")
 
     def _validate_dates(self) -> None:
         """Validate project-level date constraints."""

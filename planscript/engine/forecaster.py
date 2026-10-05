@@ -7,12 +7,13 @@ from planscript.model.project import Project
 from planscript.model.schedule import Schedule
 from planscript.model.task import Task
 from planscript.model.dependency import Dependency
-from planscript.model.constraint import Constraint, ConstraintType
+from planscript.model.constraint import ConstraintType
 
 class Forecaster:
 
     def forecast(self, project:Project, as_of=None) -> Schedule:
         forecast_project = self._build_forecast_project(project, as_of)
+         
         return Scheduler().calculate(forecast_project)
 
     def _build_forecast_project(self, project:Project, as_of=None):
@@ -22,23 +23,32 @@ class Forecaster:
                                    calendar=project.calendar)
         
         for task_id, task in project.tasks.items():
-            
-            task_state = project.tracker.get_task_state(task_id, as_of)
-            if task_state.status == TaskStatus.COMPLETED:
-                forecast_duration = timedelta(0)
-                con_date = project.tracker.actual_finish(task_id)
-                con_type = ConstraintType.MANDATORY_FINISH
-            elif task_state.status == TaskStatus.IN_PROGRESS:
-                forecast_duration = (1 - task_state.percent_complete / 100) * task.duration
-                con_date = project.tracker.actual_start(task_id)
-                con_type = ConstraintType.MANDATORY_START
-            else:
-                forecast_duration = task.duration
+            if task.duration is None:
+                forecast_duration = None
                 con_type = None
                 con_date = None
-                
+            
+            else:
+                task_state = project.tracker.get_task_state(task_id, as_of)
+
+                if task_state.status == TaskStatus.COMPLETED:
+                    forecast_duration = timedelta(0)
+                    con_date = project.tracker.actual_finish(task_id)
+                    con_type = ConstraintType.MANDATORY_FINISH
+
+                elif task_state.status == TaskStatus.IN_PROGRESS:
+                    forecast_duration = (1 - task_state.percent_complete / 100) * task.duration
+                    con_date = project.tracker.actual_start(task_id)
+                    con_type = ConstraintType.MANDATORY_START
+
+                else:
+                    forecast_duration = task.duration
+                    con_type = ConstraintType.START_NO_EARLIER_THAN
+                    con_date = as_of
+                    
             forecast_task = Task(task_id, "f_" + task.name, forecast_duration)
             forecast_project.add_task(forecast_task)
+
             if con_date is not None and con_type is not None:
                 forecast_project.add_constraint(forecast_task, con_type, con_date)
 
@@ -53,3 +63,4 @@ class Forecaster:
             forecast_project.add_dependency(predecessor=forecast_project.tasks[predecessor_id], 
                                             successor=forecast_project.tasks[successor_id], 
                                             dep_type=dep_type, lag=lag, lag_unit=lag_unit)
+        return forecast_project

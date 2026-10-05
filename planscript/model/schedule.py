@@ -36,7 +36,7 @@ class Schedule:
             project, as a timedelta.
         total_float: Total float for each task as a timedelta; None for
             summary tasks.
-        critical_tasks: Task IDs with zero total float.
+        critical_tasks: Task IDs with zero or negative total float.
         critical_paths: Complete paths through the critical-task network.
         duration: Calculated project duration as a timedelta.
         start_dates: Calendar start date for each task, or None when the
