@@ -87,6 +87,36 @@ class Analyzer:
         _, finish_dates = self._require_dates()
         return actual - finish_dates[task_id]
 
+    def finish_variance(self, task_id):
+        """Return the difference between actual and planned task completion.
+
+        Summary-task planned duration is derived from its scheduled calendar
+        dates. Milestones have zero duration and therefore zero duration
+        variance.
+
+        An unfinished task's elapsed duration is measured to the Analyzer's
+        reference date, so a backdated analysis does not pick up time that has
+        elapsed since.
+
+        Returns:
+            A timedelta variance, or None if the task has no actual duration.
+        """        
+        
+        planned = self.project.schedule.finish_dates[task_id]
+
+        if planned is None:
+            start_dates, finish_dates = self._require_dates()
+            planned = finish_dates[task_id]
+
+        actual = self.project.tracker.actual_finish(task_id, as_of=self.as_of)
+
+        # A milestone that has not happened has no duration to compare, so it
+        # reports no variance rather than a zero one.
+        if actual is None:
+            return None
+
+        return actual - planned
+
     def duration_variance(self, task_id):
         """Return the difference between actual and planned task duration.
 

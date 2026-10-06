@@ -151,7 +151,7 @@ class TaskScheduleReport:
     actual_start: date | None
     actual_finish: date| None
     actual_duration: timedelta | None
-    duration_variance: timedelta | None
+    finish_variance: timedelta | None
 
     forecast_start: date | None
     forecast_finish: date | None
@@ -174,37 +174,35 @@ class TaskScheduleReport:
 
         text = (f"--------------------------------------"
               f"\nSchedule Report    Status: {self.schedule_condition.value}\n"
-              f"--------------------------------------\n"
-              f"    Planned Start / Finish: {_format_date(self.planned_start)} / {_format_date(self.planned_finish)}\n")
+              f"--------------------------------------\n")
 
         if self.is_milestone():
-            text += (f"    Planned Duration: 0d (milestone)\n"
-                     f"    Actual Start / Finish: {_format_date(self.actual_start)} / {_format_date(self.actual_finish)}\n"
-                     f"    Duration Variance: {_format_days(self.duration_variance)} (milestone)\n")
-            return text + "\n"
+            text += f"    Planned Milestone Date: {_format_date(self.planned_finish)}\n"
+            if self.actual_start is not None:
+                text += (f"    Actual Milestone Date: {_format_date(self.actual_start)}\n"
+                         f"    Schedule Variance: {_format_days(self.finish_variance)}\n")
+            return text + f"\n"
 
-        text += f"    Planned Duration: {_format_duration(self.planned_duration)}\n"
-
-        #Started
+        
+        text += f"    Planned Start / Finish / Duration: {_format_date(self.planned_start)} / {_format_date(self.planned_finish)} / {_format_duration(self.planned_duration)}\n"
+        
         if self.actual_start is not None:
             #Completed
             if self.actual_finish is not None:
-                text += (f"    Actual Start / Finish: {_format_date(self.actual_start)} / {_format_date(self.actual_finish)}\n")
-            #In Progress (not finished)
-            else:
-                text += f"    Actual Start: {_format_date(self.actual_start)}\n"
+                text += (f"    Actual Start / Finish / Duration: {_format_date(self.actual_start)} / {_format_date(self.actual_finish)} / {_format_duration(self.actual_duration)}\n"
+                         f"    Schedule Variance: {_format_days(self.finish_variance)}\n")
+                return text + f"\n"
+            #Started / In Progress
+            text += (f"    Actual Start / Time Elapsed: {_format_date(self.actual_start)} / {_format_duration(self.actual_duration)}\n"
+                     f"    Forecasted Finish / Duration: {_format_date(self.forecast_finish)} / {_format_duration(self.forecast_duration)}\n"
+                     f"    Forecasted Schedule Variance: {_format_days(self.forecast_variance)}\n")
+            return text + f"\n"
 
-            text += (f"    Actual Duration (so far) (Variance): {_format_duration(self.actual_duration)}"
-                     f" ({_format_days(self.duration_variance)})\n")
-
-        if self.forecast_finish is not None:
-            text += f"    Forecast Finish: {_format_date(self.forecast_finish)}\n"
-
-        if self.forecast_duration is not None:
-            text += (f"    Forecast Duration (Variance): {_format_duration(self.forecast_duration)}"
-                     f" ({_format_days(self.forecast_variance)})\n")
-
-        return text + "\n"
+        else:
+            #Not Started
+            text += (f"    Forecasted Start / Finish / Duration: {_format_date(self.forecast_start)} / {_format_date(self.forecast_finish)} / {_format_duration(self.forecast_duration)}\n"
+                     f"    Forecasted Schedule Variance: {_format_days(self.forecast_variance)}\n")
+            return text + f"\n"
     
 @dataclass
 class ProjectBudgetReport:
@@ -645,22 +643,22 @@ class ReportBuilder:
         schedule = self.project.schedule
         tracker = self.project.tracker
 
-        planned_duration = self.project.tasks[task_id].duration
+        planned_finish = schedule.finish_dates[task_id]
         forecast_finish = forecast.finish_dates[task_id]
         forecast_start = forecast.start_dates[task_id]
         forecast_duration = forecast_finish - forecast_start
-        forecast_variance = forecast_duration - planned_duration
+        forecast_variance = forecast_finish - planned_finish
         
         return TaskScheduleReport(state=state,
             schedule_condition=condition,
             planned_start=schedule.start_dates[task_id],
-            planned_finish=schedule.finish_dates[task_id],
-            planned_duration=planned_duration,
+            planned_finish=planned_finish,
+            planned_duration=self.project.tasks[task_id].duration,
         
             actual_start=tracker.actual_start(task_id, self.as_of),
             actual_finish=tracker.actual_finish(task_id, self.as_of),
             actual_duration=tracker.actual_duration(task_id, self.as_of),
-            duration_variance=analysis.duration_variance(task_id),
+            finish_variance=analysis.finish_variance(task_id),
             
             forecast_start=forecast_start,
             forecast_finish=forecast_finish,
