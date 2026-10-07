@@ -1,3 +1,25 @@
+"""Forecast schedules derived from a plan's tracking state.
+
+The Forecaster builds a throwaway copy of the project in which each task's
+remaining duration and constraints are derived from tracking at a single data
+date (`as_of`):
+
+* finished work is pinned to its actual finish with a mandatory-finish
+  constraint, because history is a fact the network must accommodate;
+* every unfinished task - started, in progress, or not started - keeps its
+  remaining duration, `(1 - percent_complete / 100) * planned`, floored at
+  the data date with start-no-earlier-than, so remaining work is projected
+  forward from the data date and an open task never forecasts a finish
+  before it;
+* summary tasks take neither duration nor constraint.
+
+The forecast is scheduled by the normal CPM Scheduler, so dependencies, lag,
+milestones, and summary rollups behave exactly as they do for the plan, and
+forecast float stays network-derived. The source project is never modified:
+forecasts are derived information. When the network cannot accommodate a
+finished task's actual finish, the scheduler raises `SchedulingError`.
+"""
+
 from datetime import timedelta
 
 from planscript.engine.scheduler import Scheduler
@@ -32,17 +54,19 @@ class Forecaster:
                 task_state = project.tracker.get_task_state(task_id, as_of)
 
                 if task_state.status == TaskStatus.COMPLETED:
+                    # History is a fact: the network must accommodate the
+                    # actual finish.
                     forecast_duration = timedelta(0)
-                    con_date = project.tracker.actual_finish(task_id)
+                    con_date = project.tracker.actual_finish(task_id, as_of)
                     con_type = ConstraintType.MANDATORY_FINISH
 
-                elif task_state.status == TaskStatus.IN_PROGRESS:
-                    forecast_duration = (1 - task_state.percent_complete / 100) * task.duration
-                    con_date = project.tracker.actual_start(task_id)
-                    con_type = ConstraintType.MANDATORY_START
-
                 else:
-                    forecast_duration = task.duration
+                    # Everything unfinished - started, in progress, or not
+                    # started - forecasts its remaining duration forward
+                    # from the data date, so an open task never forecasts a
+                    # finish before the data date and a bare `start` event
+                    # behaves exactly like `progress 0%`.
+                    forecast_duration = (1 - task_state.percent_complete / 100) * task.duration
                     con_type = ConstraintType.START_NO_EARLIER_THAN
                     con_date = as_of
                     

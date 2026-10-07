@@ -86,12 +86,12 @@ wired into the CLI; see `planscript/serializer/`.)
 | `planscript/engine/tracker.py` | `Tracker`, `TaskEvent`, `TaskState`, `Invoice`, directives and statuses. |
 | `planscript/engine/analyzer.py` | `Analyzer`, `TaskVariance`: planned vs. actual variance and progress. |
 | `planscript/engine/budgeter.py` | `Budgeter`: resolves explicit and weighted budgets. |
-| `planscript/engine/forecaster.py` | `Forecaster`: forecast schedule from actuals, pinning actuals with mandatory constraints. |
+| `planscript/engine/forecaster.py` | `Forecaster`: forecast schedule from actuals; finished work pinned to its actual finish, remaining work floored at the data date. |
 | `planscript/engine/reporter.py` | `ReportBuilder` and report dataclasses for status reporting. |
 | `planscript/cli/display.py` | Table rendering, schedule/budget views, legacy interactive menus. |
 | `planscript/cli/gantt.py` | Textual Gantt rendering. |
 | `planscript/serializer/plan_serializer.py` | `Project` → `.plan` text. Incomplete; not wired into the CLI. |
-| `planscript/tests/` | `unittest` suite (248 tests) plus shared project fixtures. |
+| `planscript/tests/` | `unittest` suite (274 tests) plus shared project fixtures. |
 | `_archive/` | Superseded interactive CLI and the original standalone invoice model. |
 
 ## Model
@@ -178,8 +178,10 @@ constraint. Mandatory constraints pin the date exactly — in both the early
 and the late dates, so a mandatory task always carries zero total float —
 and raise `SchedulingError` when the network cannot accommodate the pin or
 when two mandatory constraints on one task demand different pins. The
-`Forecaster` uses mandatory constraints to pin completed tasks to their
-actual finish and in-progress tasks to their actual start.
+`Forecaster` pins completed tasks to their actual finish with a mandatory
+constraint, and floors every unfinished task - started or not - at the data
+date with a start-no-earlier-than constraint, so remaining work is projected
+forward from the data date rather than replayed from the actual start.
 
 ### `TaskHierarchy`
 
@@ -387,6 +389,13 @@ the analyzer and tracker into a status report:
 * `ProjectBudgetReport` and `TaskBudgetReport` carry only the planned and actual
   amounts; `remaining` (`budget − actual`) and `cost_variance`
   (`actual − budget`) are derived from them, so the two can never disagree.
+* Forecast figures (`Forecast Finish`, `Schedule Variance`, and each task's
+  forecast start, finish, and duration) come from `Forecaster` at the same
+  data date: finished work is pinned to its actual finish, each unfinished
+  task's remaining duration is floored at the data date, the forecast network
+  runs through the normal CPM pass, and the project's schedule variance
+  measures the forecast finish against the project's target finish (`n/a`
+  when the project sets no target).
 * A value that cannot be derived at the data date is reported as `n/a`, never as
   a zero: a zero row means a real zero. A `Data Notices` section lists tracking
   entries dated after the report date, so a truncated figure is explained rather
@@ -407,10 +416,10 @@ Project Schedule Report
 --------------------------------------
     Planned Start: 2026-08-01
     Planned Finish: 2026-11-30
-    Planned Duration: 48d
+    Planned Duration: 68d
     Actual Start: 2026-08-01
-    Forecast Finish: n/a
-    Schedule Variance: n/a
+    Forecast Finish: 2026-10-30
+    Schedule Variance: -31d
 
 --------------------------------------
 Project Budget Report
@@ -431,10 +440,9 @@ Project Progress Report
 --------------------------------------
 Schedule Report    Status: On Schedule
 --------------------------------------
-    Planned Start / Finish: 2026-08-01 / 2026-08-01
-    Planned Duration: - (milestone)
-    Actual Start / Finish: 2026-08-01 / 2026-08-01
-    Duration Variance: 0d (milestone)
+    Planned Milestone Date: 2026-08-01
+    Actual Milestone Date: 2026-08-01
+    Schedule Variance: 0d
 
 --------------------------------------
 Budget Report
@@ -442,7 +450,6 @@ Budget Report
     Planned Budget: $3,400.00
     Actual Cost: $2,500.00
     Remaining Budget: $900.00
-    Cost Variance (actual - budget): ($900.00)
 
 --------------------------------------
 Progress Report
@@ -452,9 +459,13 @@ Progress Report
     Budget Consumed: 73.5%
 ```
 
-Forecast fields (`Forecast Finish`, `Schedule Variance`, per-task forecast
-duration) are reserved but not yet derived; they print `n/a` until P3-8
-implements forecasting.
+Forecast fields are derived by `Forecaster` at the report's data date: each
+unfinished task's remaining duration is scheduled through the normal CPM pass
+with a floor at the data date, while finished work is pinned to its actual
+finish, so `Forecast Finish` is the forecast network's latest date (never
+earlier than the data date while work remains) and `Schedule Variance`
+measures it against the project's target finish. A project with no target
+finish reports `n/a` variance rather than inventing a comparison date.
 
 `python -m planscript status Simple.plan -ao 2026-09-26` (the real data date at
 the time of writing) additionally prints a `Data Notices` section, because
@@ -561,7 +572,7 @@ the rule:
 ## Testing
 
 The suite uses Python's built-in `unittest`; there is no third-party test
-dependency. Currently **248 tests**; all pass.
+dependency. Currently **274 tests**; all pass.
 
 ```powershell
 python -m unittest discover -s planscript/tests -t .
@@ -575,12 +586,14 @@ python -m unittest discover -s planscript/tests -t .
 | `test_tracking.py` | Event parsing, lifecycle/derivation rules, actual dates and costs. |
 | `test_budgeter.py` | Explicit, weighted, nested, rollup, remainder-cent, and unallocated cases. |
 | `test_performance.py` | Variance calculations against tracked plans. |
+| `test_reporter.py` | Status report figures, budget/progress invariants, data notices, and forecast fields. |
+| `test_forecaster.py` | Forecast durations and pins per tracking status, data-date edge cases, failure modes. |
 | `test_cli.py` | Subcommand behavior and exit codes through subprocesses. |
 | `test_projects.py` | Shared in-memory project fixtures for the scheduler tests. |
 
-Test conventions: fixtures live in `test_projects.py`; CLI tests run the module
-as a subprocess with `PYTHONIOENCODING=utf-8`; tests assert on messages rather
-than tracebacks.
+Test conventions: fixtures live in `test_projects.py`; CLI tests call
+`app.main` in-process with one subprocess smoke run; tests assert on messages
+rather than tracebacks.
 
 ## Current Gaps
 
@@ -595,7 +608,7 @@ The design intent and the implementation are not yet aligned in these areas.
   but not written back.
 * The status report lists every task but not the summary sections (overdue,
   blocked, late, upcoming deadlines/starts) that `ROADMAP.md` P1-3 still asks
-  for, and forecast finish / schedule variance are not yet derived.
+  for.
 * Tracking design decisions that are not yet implemented: same-day lifecycle
   precedence, rejection of future-dated events, duplicate same-day detection,
   and a decision on tracking summary tasks.

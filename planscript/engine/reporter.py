@@ -6,6 +6,7 @@ for the console. Every reported figure has exactly one source:
     planned dates and durations  ->  project.Schedule and task.duration
     actual dates and durations   ->  project.Tracker, at the report's as_of date
     variances and progress       ->  Analyzer, at the report's as_of date
+    forecasts                    ->  Forecaster, at the report's as_of date
     money                        ->  Budget for planned amounts, and Tracker
                                      invoice allocations for actuals
 
@@ -613,10 +614,17 @@ class ReportBuilder:
 
     def _project_schedule_report(self, analysis:Analyzer, forecast:Schedule) -> ProjectScheduleReport:
         planned_finish = self.project.finish_date
-        planned_start = self.project.start_date
-        forecast_finish = planned_start + forecast.duration
-        schedule_variance = forecast_finish - planned_finish
-        return ProjectScheduleReport(planned_start=planned_start,
+
+        # The forecast network's latest calendar finish, matching how task
+        # rows render forecast dates.
+        forecast_finish = max(forecast.finish_dates.values())
+
+        # The variance is forecast against the project's target finish; a
+        # project without a target reports n/a rather than crashing or
+        # inventing a comparison date.
+        schedule_variance = (forecast_finish - planned_finish
+                             if planned_finish is not None else None)
+        return ProjectScheduleReport(planned_start=self.project.start_date,
                                      planned_finish=planned_finish,
                                      planned_duration=self.project.schedule.duration,
                                      actual_start=analysis.project_actual_start(),
@@ -646,7 +654,10 @@ class ReportBuilder:
         planned_finish = schedule.finish_dates[task_id]
         forecast_finish = forecast.finish_dates[task_id]
         forecast_start = forecast.start_dates[task_id]
-        forecast_duration = forecast_finish - forecast_start
+
+        # CPM offsets measure the forecast duration exactly; the calendar
+        # dates span one day less because both ends are inclusive.
+        forecast_duration = forecast.early_finish[task_id] - forecast.early_start[task_id]
         forecast_variance = forecast_finish - planned_finish
         
         return TaskScheduleReport(state=state,

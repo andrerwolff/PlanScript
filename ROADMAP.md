@@ -136,16 +136,18 @@ The tracking design is written; these rules are not yet enforced:
   budget section renders in `ProjectReport.render_text`; the progress section
   renders planned/actual progress and `budget_consumed`.
 * Done: the variance values computed by `Analyzer` are exposed — planned and
-  actual duration, start/finish and duration variance per task, planned duration
-  and schedule variance (reserved `n/a`) for the project.
+  actual duration, start/finish and duration variance per task, and planned
+  duration for the project. The project's forecast finish and schedule
+  variance are derived by the `Forecaster` at the report's data date (P3-8).
 * Done: `test_reporter.py` asserts project status, schedule conditions, budget
   reconciliation, the `budget = actual + remaining` invariant, and data notices.
 * Remaining: render the summary sections the report model already computes —
   overdue/blocked/late lists (with `blocked_by`/`root_causes`) and the
-  look-ahead windows — which is what the one failing assertion in
+  look-ahead windows — which is what the commented-out assertion in
   `test_agreed_cli_regressions` waits for.
-* Remaining: derive forecast finish and schedule variance (P3-8) so the `n/a`
-  placeholders become figures.
+* Done: forecast finish and schedule variance (P3-8) are derived from
+  actuals, remaining duration, and dependencies at the report's data date;
+  a project with no target finish still reports `n/a` variance.
 * Acceptance: `python -m planscript status <file>` shows budget vs. actual and
   variance; reporter tests assert values; suite fully green.
 
@@ -217,8 +219,12 @@ These require the prior decisions in
   in the file, separate baseline file, or derived from tracking history) before
   writing any code. This is the largest open architectural question.
 * **P3-8** Forecast: forecast finish from actuals, remaining duration, and
-  dependencies, and report forecast-vs-target. Forecasts are derived and must
-  never be written back as authoritative data.
+  dependencies, and report forecast-vs-target. **Implemented:**
+  `planscript/engine/forecaster.py` schedules a forecast copy of the project:
+  finished work pinned to its actual finish, and each unfinished task's
+  remaining duration floored at the data date; the reporter exposes the
+  figures and `test_forecaster.py` pins the behaviour. Forecasts are derived and must never be written back as
+  authoritative data.
 * **P3-9** Staleness reporting: "task has been at 40% for 14 days", driven by
   tracking cadence configuration.
 * **P3-10** Derived/calculated progress, kept conceptually distinct from
@@ -259,7 +265,7 @@ each one is a decision waiting to be made, not an oversight.
 | Tracking validation architecture (parser vs. project validation) | **Partly settled.** Syntax and references fail in the parser; lifecycle rules fail during state derivation. Revisit when tracking is data-date aware. | P1-2 |
 | Incremental progress syntax (`+10%`, `-20%`) | **Implemented** in `TaskState._derive`. | `planscript/engine/tracker.py` |
 | Late / Blocked / Overdue task status | **Implemented** as `ScheduleCondition` in the reporter. | `planscript/engine/reporter.py` |
-| Variance calculations | **Partly settled.** Planned-vs-actual variance is implemented against the calculated schedule. Whether variance should be measured against a *revised* plan or a *baseline* is still open. | P3-7, P3-8 |
+| Variance calculations | **Partly settled.** Planned-vs-actual variance is implemented against the calculated schedule. Whether variance should be measured against a *revised* plan or a *baseline* is still open; forecast-vs-target is implemented (P3-8). | P3-7 |
 | How tracking interacts with task hierarchy | **Open.** Tracking a summary task is currently accepted with no defined semantics. | P1-2 |
 | Calendar semantics | **Open.** Working days, work week, holidays, hours, per-task calendars, and the inclusive/exclusive duration convention are undesigned. | P2 |
 | Plan revisions / baselines | **Open and the largest architectural question.** If a planned start changes from 9/10 to 9/15, historical reports become ambiguous without baselines or plan versions. Do not introduce versioning until a concrete use case forces it. | P3-7 |
@@ -267,7 +273,7 @@ each one is a decision waiting to be made, not an oversight.
 | Reopening or restarting completed tasks, pause/resume | **Open.** `complete` is currently irreversible. | P3-11 |
 | Derived/calculated progress | **Open.** Must stay conceptually distinct from explicitly reported progress. | P3-10 |
 | Staleness ("at 40% for 14 days") and tracking cadence | **Open.** Reporting logic, not tracking-model logic. | P3-9 |
-| Forecasting | **Open.** Get reliable actual history first; forecasts consume state rather than influence the tracking model. | P3-8 |
+| Forecasting | **Settled.** Forecasts are derived at the data date from actuals, remaining duration, and dependencies (`planscript/engine/forecaster.py`): finished work is pinned to its actual finish, unfinished work is projected forward from the data date. They consume state and are never written back. | P3-8 |
 | Resource modelling and resource-constrained scheduling / leveling | **Open.** `resource.py` exists only as a sketch in the model TODO list. Would be a major scope decision. | P3-2 |
 | Whether tracking events may be intermixed with the project definition | **Settled for now.** Events are recognised wherever they appear; the convention is to place them last (`SYNTAX.md`). Reopen only if placement needs enforcement. | `planscript/parser/parser.py` |
 | `Project.start_date` / `finish_date` semantics | **Partly settled.** Both are soft targets and do not constrain CPM. How target analysis is surfaced is still open. | P3-12 |
@@ -293,7 +299,7 @@ each one is a decision waiting to be made, not an oversight.
 * **Tests first for defects.** Every P0/P1 item lands with a test that fails
   before the change.
 * **Keep the suite green.** `python -m unittest discover -s planscript/tests -t .`
-  must pass before a commit; the current baseline is 248 tests.
+  must pass before a commit; the current baseline is 274 tests.
 * **No new runtime dependencies** without an explicit decision; `unittest` is
   the test framework.
 * **Validation ownership.** Syntax and structure in the parser, model legality

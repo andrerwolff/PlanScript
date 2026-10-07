@@ -28,6 +28,7 @@ from decimal import Decimal
 
 from planscript.engine.analyzer import Analyzer
 from planscript.engine.budgeter import Budgeter
+from planscript.engine.forecaster import Forecaster
 from planscript.engine.parser import Parser
 from planscript.engine.reporter import (NOT_AVAILABLE, ProjectStatus,
                                         ReportBuilder, ScheduleCondition)
@@ -317,20 +318,28 @@ class TestReportInvariants(unittest.TestCase):
                         if value is not None:
                             self.assertGreaterEqual(value, timedelta(0))
 
-    def test_duration_variance_never_beats_zero_remaining(self):
-        # A finished-in-an-instant task is the best case, so the variance can be
-        # negative (ahead of plan) but never worse than -planned duration.
+    def test_forecast_duration_stays_within_planned_bounds(self):
+        # A forecast may only shorten the remaining work: a completed task has
+        # none left, an in-progress task keeps its unearned share, and an
+        # unstarted task keeps the planned duration. It never invents duration
+        # beyond the plan.
         for as_of in DATA_DATES:
             _, report = build(as_of=as_of)
             for task_id in self.TASK_IDS:
                 with self.subTest(as_of=as_of, task=task_id):
                     schedule = task_of(report, task_id).schedule_report
-
-                    if schedule.duration_variance is None:
-                        continue
-
                     planned = schedule.planned_duration or timedelta(0)
-                    self.assertGreaterEqual(schedule.duration_variance, -planned)
+
+                    self.assertIsNotNone(schedule.forecast_duration)
+                    self.assertGreaterEqual(schedule.forecast_duration, timedelta(0))
+                    self.assertLessEqual(schedule.forecast_duration, planned)
+
+                    if schedule.actual_finish is not None:
+                        # Completed work is pinned to its actual finish, so the
+                        # forecast agrees with the actual and keeps no duration.
+                        self.assertEqual(schedule.forecast_duration, timedelta(0))
+                        self.assertEqual(schedule.forecast_finish,
+                                         schedule.actual_finish)
 
     def test_no_actual_date_is_after_the_data_date(self):
         for as_of in DATA_DATES:
@@ -411,7 +420,7 @@ class TestReportInvariants(unittest.TestCase):
                     if schedule.state.status is TaskStatus.NOT_STARTED:
                         self.assertIsNone(schedule.actual_start)
                         self.assertIsNone(schedule.actual_duration)
-                        self.assertIsNone(schedule.duration_variance)
+                        self.assertIsNone(schedule.finish_variance)
 
     def test_rendered_report_has_no_unformatted_placeholders(self):
         for as_of in DATA_DATES:
@@ -518,6 +527,77 @@ class TestScheduleConditions(unittest.TestCase):
                       ProjectStatus.COMPLETED)
 
 
+class TestForecastFigures(unittest.TestCase):
+    """Forecast figures come from the Forecaster at the report's data date."""
+
+    def test_project_forecast_finish_is_the_forecast_network_finish(self):
+        as_of = date(2026, 8, 10)
+        project, report = build(as_of=as_of)
+
+        forecast = Forecaster().forecast(project, as_of)
+        expected = max(forecast.finish_dates.values())
+
+        self.assertEqual(report.schedule_report.forecast_finish, expected)
+        # The fixture's target finish is 2026-12-31; the variance is measured
+        # against that target.
+        self.assertEqual(report.schedule_report.schedule_variance,
+                         expected - date(2026, 12, 31))
+
+    def test_project_without_a_target_finish_reports_no_variance(self):
+        plan = textwrap.dedent("""\
+            project: No Target Finish
+                start: 2026-08-01
+
+            task 1.1 Work 3d
+            """)
+        project = Parser().parse(plan)
+        project.schedule = Scheduler().calculate(project)
+        report = ReportBuilder(project, date(2026, 8, 10)).build()
+
+        self.assertIsNotNone(report.schedule_report.forecast_finish)
+        self.assertIsNone(report.schedule_report.schedule_variance)
+        self.assertIn(f"Schedule Variance: {NOT_AVAILABLE}",
+                      report.schedule_report.render_text())
+
+    def test_task_forecasts_match_the_forecast_schedule(self):
+        as_of = date(2026, 8, 10)
+        project, report = build(as_of=as_of)
+
+        forecast = Forecaster().forecast(project, as_of)
+
+        for task_report in report.all_tasks:
+            with self.subTest(task=task_report.task_id):
+                schedule = task_report.schedule_report
+
+                self.assertEqual(schedule.forecast_finish,
+                                 forecast.finish_dates[task_report.task_id])
+                self.assertEqual(schedule.forecast_duration,
+                                 forecast.early_finish[task_report.task_id]
+                                 - forecast.early_start[task_report.task_id])
+                self.assertEqual(schedule.forecast_variance,
+                                 schedule.forecast_finish - schedule.planned_finish)
+
+    def test_in_progress_task_forecasts_forward_from_the_data_date(self):
+        _, report = build(as_of=date(2026, 8, 10))
+        schedule = task_of(report, "1.2").schedule_report
+
+        # Half of the 10d plan remains, projected forward from the data date:
+        # the stall counts, so the forecast finishes 4d after the planned
+        # date instead of replaying from the actual start.
+        self.assertEqual(schedule.forecast_duration, timedelta(days=5))
+        self.assertEqual(schedule.forecast_start, date(2026, 8, 10))
+        self.assertEqual(schedule.forecast_finish, date(2026, 8, 14))
+        self.assertEqual(schedule.forecast_variance, timedelta(days=4))
+
+    def test_completed_task_forecasts_no_remaining_duration(self):
+        _, report = build(as_of=date(2026, 8, 10))
+        schedule = task_of(report, "1.1").schedule_report
+
+        # The milestone's actual finish is its forecast: nothing remains.
+        self.assertEqual(schedule.forecast_duration, timedelta(0))
+        self.assertEqual(schedule.forecast_finish, schedule.actual_finish)
+
+
 class TestDataNotices(unittest.TestCase):
     """Truncated figures come with an explanation."""
 
@@ -546,8 +626,10 @@ class TestRenderedValues(unittest.TestCase):
         self.assertTrue(schedule.is_milestone())
 
         text = schedule.render_text()
-        self.assertIn("Planned Duration: 0d (milestone)", text)
-        self.assertIn("Duration Variance: 0d (milestone)", text)
+        self.assertIn("Planned Milestone Date: 2026-08-01", text)
+        self.assertIn("Actual Milestone Date: 2026-08-01", text)
+        self.assertIn("Schedule Variance: 0d", text)
+        self.assertNotIn("Duration", text)
         self.assertNotIn("1d", text)
 
     def test_milestone_planned_progress_is_reached_or_not(self):
@@ -563,8 +645,12 @@ class TestRenderedValues(unittest.TestCase):
         _, report = build(as_of=date(2026, 8, 10))
 
         text = task_of(report, "1.2").schedule_report.render_text()
-        self.assertIn("Actual Start: 2026-08-02", text)
-        self.assertIn("Actual Duration (so far) (Variance): 9d (-1d)", text)
+        self.assertIn("Actual Start / Time Elapsed: 2026-08-02 / 9d", text)
+        # Half of the 10d plan remains, forecast forward from the data date
+        # of 2026-08-10, so the stall shows as 4d late against the planned
+        # finish of 2026-08-10.
+        self.assertIn("Forecasted Finish / Duration: 2026-08-14 / 5d", text)
+        self.assertIn("Forecasted Schedule Variance: +4d", text)
 
     def test_rendered_values_are_the_derived_values(self):
         _, report = build(as_of=date(2026, 9, 30))
