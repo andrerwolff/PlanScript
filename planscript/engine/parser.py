@@ -7,7 +7,7 @@ from planscript.exceptions import ParseError
 from planscript.model.project import Project
 from planscript.model.task import Task
 from planscript.model.dependency import Dependency
-#from planscript.model.invoice import Invoice
+from planscript.model.constraint import Constraint, ConstraintType
 from planscript.model.hierarchy import TaskHierarchy
 from planscript.engine.tracker import TaskEvent, EventDirective, Invoice
 
@@ -18,6 +18,13 @@ class PendingDependency:
     dep_type: str
     lag: timedelta
     lag_unit: str
+    line_number: int
+
+@dataclass
+class PendingConstraint:
+    task: Task
+    con_type: ConstraintType
+    con_date: date
     line_number: int
 
 class Parser:
@@ -64,6 +71,11 @@ class Parser:
 
     BUDGET_WT_PATTERN = re.compile(
         r"^(?: {4}|\t)budget\s(?P<budget_wt>\d+(?:\.\d+)?)[%]$"
+    )
+
+    CONSTRAINT_PATTERN = re.compile(
+        r"^(?: {4}|\t)constraint (?P<con_type>[A-Z]+) "
+        r"(?P<con_date>\d{4}-\d{2}-\d{2})$"
     )
 
     #Error Plan patterns
@@ -113,6 +125,7 @@ class Parser:
 
         seen_project_attributes = set()
         pending_dependencies = []
+        pending_constraints = []
 
 
         for line_number, raw_line in enumerate(text.splitlines(), start=1):
@@ -247,6 +260,24 @@ class Parser:
                 pending_dependencies.append(pending)
                 continue
 
+            #constraint
+            match = self.CONSTRAINT_PATTERN.match(line)
+            if match:
+                con_type_raw = match.group("con_type")
+                try:
+                    con_type = ConstraintType(con_type_raw)
+                except ValueError:
+                    raise ParseError(f"Invalid constraint type '{match.group('con_type')}'")
+
+                con_date = self.parse_date(match.group("con_date"),line_number)
+                pending = PendingConstraint(
+                    task = current_object,
+                    con_type=con_type,
+                    con_date=con_date
+                    line_number=line_number)
+                pending_constraints.append(pending)
+                continue
+
             match = self.BUDGET_PATTERN.match(line)
             if match:
                 task_budget = match.group("budget")
@@ -332,6 +363,7 @@ class Parser:
             raise ParseError("No project declaration found")
 
         self.resolve_dependencies(project, pending_dependencies)
+        self.resolve_constraints(project, pending_constraints)
         project.validate()
         project.tracker.hierarchy = TaskHierarchy(project.tasks)
 
@@ -396,6 +428,14 @@ class Parser:
                 ):
                     raise ParseError(f"Line {d.line_number}: duplicate dependency '{d.predecessor_id}' > '{d.successor_id}'")
             project.add_dependency(predecessor, successor, d.dep_type, d.lag, d.lag_unit)
+
+    def resolve_constraints(self, project:Project, pending_constraints: list[PendingConstraint]):
+        for c in pending_constraints:
+            if c.task not in project.tasks.values():
+                raise ParseError(f"Line {c.line_number}: Unknown task for constraint '{c.task.number}'")
+            # TODO more validation?
+            
+            project.add_constraint(c.task, )
 
     def parse_event_directive(self, full_directive, line_number):
         parts = full_directive.strip().split(maxsplit=1)
