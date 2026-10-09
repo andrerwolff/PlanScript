@@ -1,9 +1,11 @@
 import unittest
 import textwrap
 from datetime import timedelta, date
+from decimal import Decimal
 
 from planscript.engine.parser import Parser, ParseError
 from planscript.model.project import ValidationError
+from planscript.model.constraint import ConstraintType
 from planscript.model.dependency import DependencyType
 
 class ValidatePlan(unittest.TestCase):
@@ -777,6 +779,398 @@ class TestParser(unittest.TestCase):
             project.metadata["client"],
             "Denver"
         )
+
+
+class TestConstraints(unittest.TestCase):
+    def setUp(self):
+        self.parser = Parser()
+
+    # ---------------------------------------------------------
+    # Constraint parsing
+    # ---------------------------------------------------------
+
+    def test_constraint_attaches_to_preceding_task(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+            constraint SNET 2026-01-15
+        """)
+
+        project = self.parser.parse(text)
+
+        self.assertEqual(len(project.constraints), 1)
+
+        constraint = project.constraints[0]
+        self.assertIs(constraint.task, project.tasks["1.1"])
+        self.assertEqual(constraint.con_type, ConstraintType.START_NO_EARLIER_THAN)
+        self.assertEqual(constraint.con_date, date(2026, 1, 15))
+
+    def test_all_constraint_type_codes(self):
+        codes = {
+            "SNET": ConstraintType.START_NO_EARLIER_THAN,
+            "SNLT": ConstraintType.START_NO_LATER_THAN,
+            "FNET": ConstraintType.FINISH_NO_EARLIER_THAN,
+            "FNLT": ConstraintType.FINISH_NO_LATER_THAN,
+            "MSON": ConstraintType.MANDATORY_START,
+            "MFON": ConstraintType.MANDATORY_FINISH,
+        }
+
+        for code, expected in codes.items():
+            with self.subTest(code=code):
+                text = textwrap.dedent(f"""\
+                project: Test
+                    start: 2026-01-05
+                task 1.1 Design 5d
+                    constraint {code} 2026-01-15
+                """)
+
+                project = self.parser.parse(text)
+
+                self.assertEqual(project.constraints[0].con_type, expected)
+
+    def test_multiple_constraints_on_one_task(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+            constraint SNET 2026-01-10
+            constraint FNLT 2026-01-20
+        """)
+
+        project = self.parser.parse(text)
+
+        self.assertEqual(len(project.constraints), 2)
+        self.assertEqual(
+            project.constraints[0].con_type,
+            ConstraintType.START_NO_EARLIER_THAN
+        )
+        self.assertEqual(
+            project.constraints[1].con_type,
+            ConstraintType.FINISH_NO_LATER_THAN
+        )
+
+    def test_constraint_may_follow_dependency_on_same_task(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 A 5d
+        task 1.2 B 10d
+            depends 1.1
+            constraint FNLT 2026-02-02
+        """)
+
+        project = self.parser.parse(text)
+
+        self.assertEqual(len(project.dependencies), 1)
+        self.assertEqual(len(project.constraints), 1)
+        self.assertIs(project.constraints[0].task, project.tasks["1.2"])
+
+    def test_constraint_on_milestone(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Gate 0d
+            constraint MFON 2026-01-30
+        """)
+
+        project = self.parser.parse(text)
+
+        self.assertEqual(len(project.constraints), 1)
+        self.assertIs(project.constraints[0].task, project.tasks["1.1"])
+        self.assertEqual(
+            project.constraints[0].con_type,
+            ConstraintType.MANDATORY_FINISH
+        )
+
+    # ---------------------------------------------------------
+    # Constraint errors
+    # ---------------------------------------------------------
+
+    def test_invalid_constraint_type(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+            constraint ASAP 2026-01-15
+        """)
+
+        with self.assertRaises(ParseError) as context:
+            self.parser.parse(text)
+
+        self.assertIn("Line 4", str(context.exception))
+        self.assertIn("invalid constraint type 'ASAP'", str(context.exception))
+
+    def test_lowercase_constraint_type_is_rejected(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+            constraint snet 2026-01-15
+        """)
+
+        with self.assertRaises(ParseError) as context:
+            self.parser.parse(text)
+
+        self.assertIn("Line 4", str(context.exception))
+        self.assertIn("invalid constraint syntax", str(context.exception))
+
+    def test_invalid_constraint_date(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+            constraint SNET 2026-13-45
+        """)
+
+        with self.assertRaises(ParseError) as context:
+            self.parser.parse(text)
+
+        self.assertIn("Line 4", str(context.exception))
+        self.assertIn("invalid date '2026-13-45'", str(context.exception))
+
+    def test_malformed_constraint_date_is_rejected(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+            constraint SNET 2026-1-5
+        """)
+
+        with self.assertRaises(ParseError) as context:
+            self.parser.parse(text)
+
+        self.assertIn("invalid constraint syntax", str(context.exception))
+
+    def test_unindented_constraint_is_rejected(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+        constraint SNET 2026-01-15
+        """)
+
+        with self.assertRaises(ParseError):
+            self.parser.parse(text)
+
+    def test_constraint_without_preceding_task(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+            constraint SNET 2026-01-15
+        """)
+
+        with self.assertRaises(ParseError) as context:
+            self.parser.parse(text)
+
+        self.assertIn("Line 3", str(context.exception))
+        self.assertIn("constraint has no preceding task", str(context.exception))
+
+    def test_constraint_after_invoice_is_rejected(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+        2026-02-01 invoice $100
+            1.1 $100
+            constraint SNET 2026-01-15
+        """)
+
+        with self.assertRaises(ParseError) as context:
+            self.parser.parse(text)
+
+        self.assertIn("Line 6", str(context.exception))
+        self.assertIn("constraint has no preceding task", str(context.exception))
+
+    def test_constraint_on_summary_task_fails_validation(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1 Design
+            constraint SNET 2026-01-15
+        task 1.1 Layout 5d
+        """)
+
+        with self.assertRaises(ValidationError) as context:
+            self.parser.parse(text)
+
+        self.assertIn(
+            "Summary task '1' cannot have a constraint",
+            str(context.exception)
+        )
+
+    def test_constraint_requires_project_start_date(self):
+        text = textwrap.dedent("""\
+        project: Test
+        task 1.1 Design 5d
+            constraint SNET 2026-01-15
+        """)
+
+        with self.assertRaises(ValidationError) as context:
+            self.parser.parse(text)
+
+        self.assertIn("without a start date", str(context.exception))
+
+
+class TestFallThroughErrors(unittest.TestCase):
+    """Indented lines that look like budgets/constraints but fail their
+    patterns must get a specific error, not a tracking fall-through."""
+
+    def setUp(self):
+        self.parser = Parser()
+
+    def test_budget_with_three_decimal_places(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+            budget $10.555
+        """)
+
+        with self.assertRaises(ParseError) as context:
+            self.parser.parse(text)
+
+        self.assertIn("Line 4", str(context.exception))
+        self.assertIn("invalid budget syntax", str(context.exception))
+
+    def test_budget_weight_without_percent_sign(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+            budget 40
+        """)
+
+        with self.assertRaises(ParseError) as context:
+            self.parser.parse(text)
+
+        self.assertIn("Line 4", str(context.exception))
+        self.assertIn("invalid budget syntax", str(context.exception))
+
+    def test_budget_with_no_arguments(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+            budget
+        """)
+
+        with self.assertRaises(ParseError) as context:
+            self.parser.parse(text)
+
+        self.assertIn("invalid budget syntax", str(context.exception))
+
+    def test_valid_budgets_still_parse(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1 Summary
+            budget $100
+        task 1.1 Design 5d
+            budget $10.5
+        task 1.2 Build 5d
+            budget $89.5
+        """)
+
+        project = self.parser.parse(text)
+
+        self.assertEqual(project.tasks["1.1"].budget, Decimal("10.5"))
+
+    def test_valid_budget_weight_still_parses(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1 Summary
+            budget $100
+        task 1.1 Design 5d
+            budget 100%
+        """)
+
+        project = self.parser.parse(text)
+
+        self.assertEqual(project.tasks["1.1"].budget_wt, Decimal("100"))
+
+
+class TestTrackingDateGroups(unittest.TestCase):
+    """A date-only tracking line opens a group that must contain at least
+    one entry."""
+
+    def setUp(self):
+        self.parser = Parser()
+
+    def test_empty_group_at_end_of_file(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+        2026-09-26
+        """)
+
+        with self.assertRaises(ParseError) as context:
+            self.parser.parse(text)
+
+        self.assertIn("Line 4", str(context.exception))
+        self.assertIn("tracking date has no entries", str(context.exception))
+
+    def test_empty_group_before_next_date_header(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+        2026-09-26
+        2026-09-27
+            1.1 start
+        """)
+
+        with self.assertRaises(ParseError) as context:
+            self.parser.parse(text)
+
+        self.assertIn("Line 4", str(context.exception))
+        self.assertIn("tracking date has no entries", str(context.exception))
+
+    def test_empty_group_before_single_line_event(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+        2026-09-26
+        2026-09-27 1.1 start
+        """)
+
+        with self.assertRaises(ParseError) as context:
+            self.parser.parse(text)
+
+        self.assertIn("Line 4", str(context.exception))
+        self.assertIn("tracking date has no entries", str(context.exception))
+
+    def test_group_with_entries_parses(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+        2026-09-26
+            1.1 start
+            1.1 complete
+        """)
+
+        project = self.parser.parse(text)
+
+        self.assertEqual(len(project.tracker.task_events), 2)
+
+    def test_sequential_groups_parse(self):
+        text = textwrap.dedent("""\
+        project: Test
+            start: 2026-01-05
+        task 1.1 Design 5d
+        2026-09-26
+            1.1 start
+        2026-09-27
+            1.1 complete
+        """)
+
+        project = self.parser.parse(text)
+
+        self.assertEqual(len(project.tracker.task_events), 2)
 
 
 if __name__ == "__main__":

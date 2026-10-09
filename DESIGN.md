@@ -540,9 +540,9 @@ section records the design decisions behind them.
   means the user reported it, and `complete` implies 100%. Any future
   calculated-progress mechanism must never be presented as though the user
   reported it (`ROADMAP.md` P3-10).
-* Designed but not yet enforced — same-day lifecycle precedence, rejecting
-  future-dated events, duplicate same-day detection, and tracking on summary
-  tasks — are listed under Current Gaps and tracked as `ROADMAP.md` P1-2.
+* Designed but not yet enforced — same-day lifecycle precedence, duplicate
+  same-day detection, and tracking on summary tasks — are listed under Current
+  Gaps and tracked as `ROADMAP.md` P1-2.
 
 ## Validation
 
@@ -551,7 +551,8 @@ the rule:
 
 1. **Parser** (`ParseError`) — line-level syntax and structure: missing or
    duplicate `project:`, content before the project, unindented attributes,
-   duplicate attributes, invalid dates, invalid durations, unknown task
+   duplicate attributes, invalid dates, invalid durations, invalid constraint
+   types, malformed budget lines, empty tracking date groups, unknown task
    references in `depends`/tracking/allocation lines, self-dependencies,
    duplicate dependencies, malformed directive arguments, and unrecognized
    lines.
@@ -572,7 +573,7 @@ the rule:
 ## Testing
 
 The suite uses Python's built-in `unittest`; there is no third-party test
-dependency. Currently **274 tests**; all pass.
+dependency. Currently **298 tests**; all pass.
 
 ```powershell
 python -m unittest discover -s planscript/tests -t .
@@ -580,7 +581,7 @@ python -m unittest discover -s planscript/tests -t .
 
 | Test module | Focus |
 | --- | --- |
-| `test_parser.py` | Project/task/metadata/budget/dependency syntax, error messages, line references. |
+| `test_parser.py` | Project/task/metadata/budget/dependency/constraint syntax, error messages, line references. |
 | `test_model.py` | `TaskHierarchy` behavior, budget validation, and constraint validation rules. |
 | `test_scheduler.py` | CPM examples across dependency types, branching, merging, float, critical paths, and soft and mandatory constraints. |
 | `test_tracking.py` | Event parsing, lifecycle/derivation rules, actual dates and costs. |
@@ -610,6 +611,7 @@ The design intent and the implementation are not yet aligned in these areas.
   blocked, late, upcoming deadlines/starts) that `ROADMAP.md` P1-3 still asks
   for.
 * Tracking design decisions that are not yet implemented: same-day lifecycle
-  precedence, rejection of future-dated events, duplicate same-day detection,
-  and a decision on tracking summary tasks.
+  precedence, duplicate same-day detection, and a decision on tracking summary
+  tasks. (Future-dated events are settled: the data-date model excludes them
+  and reports list them under `Data Notices`.)
 

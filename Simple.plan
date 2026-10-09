@@ -38,12 +38,13 @@ task 3.4 Closeout 5d
     budget 10%
     depends 3.3 FS 0d
 task 3.5 Done 0d
-    depends 3.4 FS 20d
+    depends 3.4 FS 5d
     budget 0%
 
 task 4 Untracked Work
 task 4.1 Future Task 10d
     depends 2.2
+    constraint FNLT 2026-11-30
 
 ;Tracking:
 2026-08-01

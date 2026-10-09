@@ -27,7 +27,8 @@ Work items are tagged with the modules they touch.
 
 * Line-oriented `.plan` parser with line-numbered errors: project declaration,
   project attributes (`calendar`, `start`, `finish`), metadata, tasks, task
-  metadata, dependencies, budgets, invoices, and tracking events.
+  metadata, dependencies, task-level constraints, budgets, invoices, and
+  tracking events.
 * Hierarchical alphanumeric task IDs, summary tasks (no duration), milestones
   (`0d`), decimal durations, `h`/`d`/`w` units.
 * `FS`/`SS`/`FF`/`SF` dependencies with signed lag and the default `FS`/`+0`
@@ -72,7 +73,7 @@ Work items are tagged with the modules they touch.
 
 **Quality baseline**
 
-* 248 `unittest` tests covering parser errors, CPM examples,
+* 298 `unittest` tests covering parser errors, CPM examples,
   dependency types, soft and mandatory constraints, tracking, budgets,
   variance, reports, data-date behavior, and CLI behavior.
 
@@ -109,19 +110,21 @@ The tracking design is written; these rules are not yet enforced:
    applied as `start → progress → complete` regardless of file order. Today
    same-date order is file order, so `progress` written above `start` is
    rejected.
-2. **Future-dated events as a validation error** — decided differently for now:
-   rather than rejecting them at parse time, every derived figure is measured to
-   an explicit data date (`as_of`, default today), events after that date are
-   excluded, and `ReportBuilder` prints a `Data Notices` section listing what was
-   excluded (`Tracker.future_dated_events`). So `Full_Plan.plan`'s `2026-10-11`
-   event no longer distorts a report run on an earlier date. Remaining: decide
-   whether a hard parse-time rejection is still wanted alongside that, and
-   document the decision in `SYNTAX.md`.
+2. **Future-dated events as a validation error** — [SETTLED] no parse-time
+   rejection. Every derived figure is measured to an explicit data date
+   (`as_of`, default today), events after that date are excluded, and
+   `ReportBuilder` prints a `Data Notices` section listing what was excluded
+   (`Tracker.future_dated_events`). So `Full_Plan.plan`'s `2026-10-11` event no
+   longer distorts a report run on an earlier date. The decision is documented
+   in `SYNTAX.md` under the tracking lifecycle rules.
 3. **Duplicate same-day events** — two `progress` events for one task on one
    date must be rejected rather than resolved by file order.
 4. **Tracking on summary tasks** — currently accepted silently. Decide: reject,
    derive from leaves, or allow with rollup, then enforce and document.
-5. **Date-only line with no entries** — should be invalid.
+5. **Date-only line with no entries** — [COMPLETED] the parser rejects a
+   date-only tracking line followed by another date, a one-line event, or the
+   end of the file (`Line N: tracking date has no entries`). Tested in
+   `test_parser.py` and documented in `SYNTAX.md`.
 * Done: `as_of`/data-date parameter exists on `Tracker` and `Analyzer`
   (`Analyzer(project, as_of)`), so historical state is derived deterministically
   and tested without depending on the wall clock; `test_reporter.py` pins the
@@ -233,8 +236,9 @@ These require the prior decisions in
   tracking model is stable.
 * **P3-12** Constraints follow-through: the four soft (`SNET`, `SNLT`,
   `FNET`, `FNLT`) and two mandatory (`MSON`, `MFON`) task-level constraints
-  are implemented in the model and scheduler (programmatic only; no
-  authoring syntax yet). Remaining: authoring syntax, reporting them, and
+  are implemented in the model, scheduler, and parser (`constraint <TYPE>
+  <YYYY-MM-DD>` task lines, documented in `SYNTAX.md`). Remaining: reporting
+  them, and
   evaluating them against portfolio targets such as `Project.finish_date`
   while preserving the target-vs-constraint distinction.
 * **P3-17** Over-constrained reporting: surface tasks with negative total float

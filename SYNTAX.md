@@ -1,7 +1,7 @@
 # PlanScript — Syntax
 
 This document describes the syntax the **current parser actually implements**
-(`planscript/parser/parser.py`). Anything not described here is not accepted
+(`planscript/engine/parser.py`). Anything not described here is not accepted
 today. See [Not yet supported](#not-yet-supported) and
 [Known sharp edges](#known-sharp-edges) before reaching for a feature.
 
@@ -21,7 +21,7 @@ today. See [Not yet supported](#not-yet-supported) and
 project declaration        required, exactly once, first content line
     project attributes     calendar / start / finish / metadata
 task definitions           each followed by its own indented lines
-    depends / budget / - metadata
+    depends / constraint / budget / - metadata
 tracking events            optional, dated, after the project definition
 invoices                   optional, dated, after the project definition
 ```
@@ -242,6 +242,56 @@ Default behavior:
 * An identical dependency (same pair, type, and lag) may not be repeated.
 * Circular dependencies are rejected during validation.
 
+## Constraints
+
+A `constraint` line pins a task to a calendar date. It is indented under the
+task, like `depends`.
+
+General concept:
+
+```text
+<tab>constraint <TYPE> <YYYY-MM-DD>
+```
+
+Example:
+
+```text
+task 4.1 Future Task 10d
+    depends 2.2
+    constraint FNLT 2026-11-30
+```
+
+### Constraint types
+
+| Code | Name | Meaning |
+| --- | --- | --- |
+| `SNET` | Start No Earlier Than | Soft floor on the task's start date. |
+| `SNLT` | Start No Later Than | Soft ceiling on the task's start date. |
+| `FNET` | Finish No Earlier Than | Soft floor on the task's finish date. |
+| `FNLT` | Finish No Later Than | Soft ceiling on the task's finish date. |
+| `MSON` | Mandatory Start | Pins the start date exactly. |
+| `MFON` | Mandatory Finish | Pins the finish date exactly. |
+
+### Constraint rules
+
+* The type code is uppercase and must be one of the six codes above; anything
+  else — including lowercase codes such as `snet` and non-padded dates such
+  as `2026-1-5` — is a parse error naming the offending line.
+* The date is an exact `YYYY-MM-DD` calendar date.
+* A constraint attaches to the task above it. A constraint that is not under a
+  task (for example under the project or after an invoice) is a parse error.
+* The constrained task must be a leaf. A summary task's dates are derived from
+  its children, so constraining one is a validation error.
+* The project must declare a `start:` date; the constraint date is anchored to
+  it. Constraining a project without a start date is a validation error.
+* A task may carry more than one constraint.
+* Soft constraints (`SNET`, `SNLT`, `FNET`, `FNLT`) resolve to the more
+  restrictive of the network and the constraint. Mandatory constraints
+  (`MSON`, `MFON`) pin the date exactly and fail scheduling with a
+  `SchedulingError` when the network cannot accommodate the pin.
+* The project's `start:` / `finish:` dates remain soft targets and are not
+  constraints.
+
 ## Budgets
 
 Budget lines are indented under the task.
@@ -346,7 +396,8 @@ placed after the project definition.
 
 * The date comes first because tracking is historical and chronological.
 * A date-only line begins a group: the following indented lines inherit that
-  date.
+  date. The group must contain at least one entry; a date-only line followed
+  by another date, a one-line event, or the end of the file is a parse error.
 * A `;Tracking` comment before the events is a convention only. There is no
   `Tracking` section keyword; events are recognized after the project
   definition wherever they appear.
@@ -373,6 +424,10 @@ Anything else, including `progress 50` without `%`, is a parse error.
 * `progress 100%` does **not** complete a task; only `complete` does.
 * The referenced task must exist.
 * Tracking is currently accepted on any task, including summary tasks.
+* Events dated after the data date are **not** a parse error. The data date
+  (`as_of`, default today) excludes them from derived figures, and the
+  `status` report lists them under `Data Notices` so nothing is silently
+  dropped.
 
 ## Comments
 
@@ -406,7 +461,8 @@ scheduler, or CLI today:
 * Inline comments.
 * `dependency <predecessor> > <successor> <type><lag>` as a standalone entry
   line. Dependencies are written as indented `depends` lines instead.
-* Constraints of any kind, and task-level dates.
+* Task-level dates (per-task `start:`/`finish:` attributes). Task-level
+  constraints are supported; see [Constraints](#constraints).
 * Task-level calendars, working hours, holidays, and calendar-aware
   scheduling. A `calendar:` name is parsed and stored but never applied.
 * Month (`m`) durations. `parse_duration` understands `m` as 30 days, but no
@@ -421,21 +477,13 @@ scheduler, or CLI today:
 These behave in ways that are surprising for hand-written plans. They are
 tracked in `ROADMAP.md`.
 
-1. **A token that is not a valid duration becomes part of the name.**
-   `task 1.2 Design 5m` parses as a task named `Design 5m` with no duration, and
-   then fails validation because a task without children must have a duration.
-   The same happens for typos such as `task 1.2 Design 5 d`.
+1. **A token that is not a valid duration becomes part of the name.** `task 1.2
+   Design 5m` parses as a task named `Design 5m` with no duration, and then
+   fails validation because a task without children must have a duration. The
+   same happens for typos such as `task 1.2 Design 5 d`.
 2. **Inline comments are absorbed into names.** `task 1.2 Design 5d ; rush`
    produces a name of `Design 5d ; rush` and an undated task rather than a
    clear comment error.
-3. **A malformed budget is reported as a tracking error.** An indented
-   `<word> $<amount>` line that is not a valid budget, such as
-   `budget $10.555` (three decimal places), falls through to the tracking-entry
-   branch and fails with `Tracking entry has no date.` instead of a
-   budget-specific error.
-4. **Same-day event order is file order.** `progress` written before `start` on
+3. **Same-day event order is file order.** `progress` written before `start` on
    the same date is rejected rather than reordered by lifecycle precedence.
-5. **Future-dated tracking events are accepted.** A tracking date later than
-   today is not currently rejected.
-6. **A date-only tracking line with no entries is accepted and ignored.**
 

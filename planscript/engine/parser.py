@@ -79,6 +79,14 @@ class Parser:
     )
 
     #Error Plan patterns
+    INVALID_BUDGET_PATTERN = re.compile(
+        r"^(?: {4}|\t)budget(?:\s|$)"
+    )
+
+    INVALID_CONSTRAINT_PATTERN = re.compile(
+        r"^(?: {4}|\t)constraint(?:\s|$)"
+    )
+
     INVALID_TASK_DURATION_PATTERN = re.compile(
         r"^task\s+"
         r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
@@ -91,11 +99,10 @@ class Parser:
         r"(?P<predecessor>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)(?P<type>FS|SS|FF|SF)"
     )
 
-    #Standard Tracking Patterns
+    # Standard Tracking Patterns
     TRACKING_DATE_PATTERN = re.compile(
         r"^(?P<date>\d{4}-\d{2}-\d{2})$"
     )
-    # TODO harden entry pattern vs "    budget 40"
     TRACKING_ENTRY_PATTERN = re.compile(
         r"^(?: {4}|\t)"
         r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
@@ -122,6 +129,8 @@ class Parser:
         project = None
         current_object = None
         tracking_date = None
+        tracking_date_line = None
+        tracking_date_used = False
 
         seen_project_attributes = set()
         pending_dependencies = []
@@ -263,17 +272,19 @@ class Parser:
             #constraint
             match = self.CONSTRAINT_PATTERN.match(line)
             if match:
+                if not isinstance(current_object, Task):
+                    raise ParseError(f"Line {line_number}: constraint has no preceding task")
                 con_type_raw = match.group("con_type")
                 try:
                     con_type = ConstraintType(con_type_raw)
                 except ValueError:
-                    raise ParseError(f"Invalid constraint type '{match.group('con_type')}'")
+                    raise ParseError(f"Line {line_number}: invalid constraint type '{con_type_raw}'")
 
                 con_date = self.parse_date(match.group("con_date"),line_number)
                 pending = PendingConstraint(
                     task = current_object,
                     con_type=con_type,
-                    con_date=con_date
+                    con_date=con_date,
                     line_number=line_number)
                 pending_constraints.append(pending)
                 continue
@@ -289,6 +300,22 @@ class Parser:
                 task_budget_wt = match.group("budget_wt")
                 current_object.budget_wt = Decimal(task_budget_wt)
                 continue
+
+            # A line that starts like a budget or constraint but failed the
+            # valid patterns must not fall through to the tracking branch.
+            match = self.INVALID_CONSTRAINT_PATTERN.match(line)
+            if match:
+                raise ParseError(
+                    f"Line {line_number}: invalid constraint syntax '{line.strip()}'. "
+                    f"Expected 'constraint <TYPE> <YYYY-MM-DD>'."
+                )
+
+            match = self.INVALID_BUDGET_PATTERN.match(line)
+            if match:
+                raise ParseError(
+                    f"Line {line_number}: invalid budget syntax '{line.strip()}'. "
+                    f"Expected 'budget $<amount>' or 'budget <percent>%'."
+                )
 
             match = self.INVOICE_PATTERN.match(line)
             if match:
@@ -313,6 +340,11 @@ class Parser:
             #Tracking Main
             match = self.TRACKING_PATTERN.match(line)
             if match:
+                if tracking_date_line is not None and not tracking_date_used:
+                    raise ParseError(
+                        f"Line {tracking_date_line}: tracking date has no entries"
+                    )
+
                 event_date = self.parse_date(match.group("date"), line_number)
                 task_id = match.group("id")
                 full_directive = match.group("directive")
@@ -322,17 +354,25 @@ class Parser:
 
                 directive, info = self.parse_event_directive(full_directive, line_number)
                 task_event = TaskEvent(event_date, task_id, directive, info)
-                    
+
                 project.tracker.add_task_event(task_event)
 
                 tracking_date = None
+                tracking_date_line = None
                 current_object = project
                 continue
 
             # Tracking date header for multi line
             match = self.TRACKING_DATE_PATTERN.match(line)
             if match:
+                if tracking_date_line is not None and not tracking_date_used:
+                    raise ParseError(
+                        f"Line {tracking_date_line}: tracking date has no entries"
+                    )
+
                 tracking_date = self.parse_date(match.group("date"),line_number)
+                tracking_date_line = line_number
+                tracking_date_used = False
                 current_object = project
                 continue
 
@@ -353,11 +393,17 @@ class Parser:
 
                 project.tracker.add_task_event(task_event)
 
+                tracking_date_used = True
                 current_object = project
                 continue
 
             # nothing recognized
             raise ParseError(f"Line {line_number}: unrecognized syntax: {line}")
+
+        if tracking_date_line is not None and not tracking_date_used:
+            raise ParseError(
+                f"Line {tracking_date_line}: tracking date has no entries"
+            )
 
         if project is None:
             raise ParseError("No project declaration found")
@@ -429,13 +475,16 @@ class Parser:
                     raise ParseError(f"Line {d.line_number}: duplicate dependency '{d.predecessor_id}' > '{d.successor_id}'")
             project.add_dependency(predecessor, successor, d.dep_type, d.lag, d.lag_unit)
 
-    def resolve_constraints(self, project:Project, pending_constraints: list[PendingConstraint]):
+    def resolve_constraints(self, project:Project, pending_constraints: list[PendingConstraint]) -> None:
         for c in pending_constraints:
-            if c.task not in project.tasks.values():
+            if project.tasks[c.task.number] is not c.task:
                 raise ParseError(f"Line {c.line_number}: Unknown task for constraint '{c.task.number}'")
             # TODO more validation?
+            try:
+                project.add_constraint(c.task, c.con_type, c.con_date)
+            except (ValueError, TypeError) as exc:
+                raise ParseError(f"Line {c.line_number}: {exc}") from exc
             
-            project.add_constraint(c.task, )
 
     def parse_event_directive(self, full_directive, line_number):
         parts = full_directive.strip().split(maxsplit=1)
