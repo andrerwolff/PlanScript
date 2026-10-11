@@ -540,9 +540,8 @@ section records the design decisions behind them.
   means the user reported it, and `complete` implies 100%. Any future
   calculated-progress mechanism must never be presented as though the user
   reported it (`ROADMAP.md` P3-10).
-* Designed but not yet enforced — same-day lifecycle precedence, duplicate
-  same-day detection, and tracking on summary tasks — are listed under Current
-  Gaps and tracked as `ROADMAP.md` P1-2.
+* Designed but not yet enforced — tracking on summary tasks — is listed under
+  Current Gaps and tracked as `ROADMAP.md` P1-2.
 
 ## Validation
 
@@ -565,7 +564,8 @@ the rule:
    invoice allocation totals.
 3. **State derivation** (`ValidationError` / `ParseError`) — event lifecycle
    rules when a `TaskState` is derived (start once, no progress before start,
-   no progress after complete, complete once, 0–100%).
+   no progress after complete, complete once, 0–100%), and duplicate same-day
+   events rejected when they are recorded.
 4. **Engines** (`SchedulingError`, `BudgetingError`) — nothing to schedule or
    budget, weighted budgets with no allocatable ancestor, and mandatory
    constraints the network cannot accommodate.
@@ -573,7 +573,7 @@ the rule:
 ## Testing
 
 The suite uses Python's built-in `unittest`; there is no third-party test
-dependency. Currently **298 tests**; all pass.
+dependency. Currently **307 tests**; all pass.
 
 ```powershell
 python -m unittest discover -s planscript/tests -t .
@@ -610,8 +610,8 @@ The design intent and the implementation are not yet aligned in these areas.
 * The status report lists every task but not the summary sections (overdue,
   blocked, late, upcoming deadlines/starts) that `ROADMAP.md` P1-3 still asks
   for.
-* Tracking design decisions that are not yet implemented: same-day lifecycle
-  precedence, duplicate same-day detection, and a decision on tracking summary
-  tasks. (Future-dated events are settled: the data-date model excludes them
-  and reports list them under `Data Notices`.)
+* Tracking design decisions that are not yet implemented: a decision on
+  tracking summary tasks. (Same-day lifecycle precedence and duplicate
+  same-day detection are enforced; future-dated events are settled: the
+  data-date model excludes them and reports list them under `Data Notices`.)
 

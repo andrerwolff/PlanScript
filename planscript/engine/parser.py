@@ -421,7 +421,13 @@ class Parser:
 
         value = value.lower()
 
-        if value[-1] not in "hdwm":
+        if value[-1] == "m":
+            raise ParseError(
+                f"Invalid duration: '{value}'. "
+                f"The 'm' (month) unit is not supported; use days or weeks."
+            )
+
+        if value[-1] not in "hdw":
                     value += "d"
 
         try:            
@@ -438,11 +444,6 @@ class Parser:
             return (timedelta(days=number), "d")
         elif unit == "w":
             return (timedelta(weeks=number), "w")
-        elif unit == "m":
-            # Define what "month" means here before implementing this.
-            
-           # print("Month durations are not yet supported")
-            return (timedelta(days=number*30), "m")
 
         raise ParseError(f"Invalid duration: {value}")
 

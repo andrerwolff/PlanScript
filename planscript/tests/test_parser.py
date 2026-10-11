@@ -391,11 +391,12 @@ class TestParser(unittest.TestCase):
             (timedelta(days=5),"d")
         )
 
-    def test_duration_months(self):
-        self.assertEqual(
-            self.parser.parse_duration("2m"),
-            (timedelta(days=60), "m")
-        )
+    def test_duration_months_rejected(self):
+        # The 'm' (month) unit is deprecated and not supported.
+        with self.assertRaises(ParseError) as context:
+            self.parser.parse_duration("2m")
+
+        self.assertIn("not supported", str(context.exception))
 
     def test_duration_is_case_insensitive(self):
         self.assertEqual(

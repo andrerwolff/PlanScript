@@ -148,6 +148,7 @@ duration token when one is present.
 The optional last entry on the task line defines the length of the task.
 
 Supported units on the task line: `h = hours`, `d = days`, `w = weeks`.
+The `m` (month) unit is not supported and is rejected.
 
 Examples:
 
@@ -221,6 +222,7 @@ Default behavior:
 Lag follows the dependency type.
 
 Supported units: `h = hours`, `d = days`, `w = weeks`.
+The `m` (month) unit is not supported and is rejected.
 
 Examples:
 
@@ -410,16 +412,21 @@ placed after the project definition.
 | `progress <n>%` | percentage | Absolute reported completion. |
 | `progress +<n>%` | signed percentage | Incremental change (`-<n>%` reduces). |
 | `complete` | none | The task finished. Sets the actual finish date and 100% progress. |
-| `note <text>` | free text | A remark; no effect on derived state. |
+| `note <text>` | free text | A remark; no effect on derived state. Multiple notes for one task on one date are combined into a single event, separated by ` | `. |
 
 Anything else, including `progress 50` without `%`, is a parse error.
 
 ### Lifecycle rules (validated per task, in date order)
 
+* Within one date, events are applied in `start → progress → complete`
+  order regardless of file order. Notes never affect derived state.
 * `start` may occur only once.
 * `progress` requires a prior `start`.
 * `progress` may not follow `complete`.
 * `complete` may occur only once and only after `start`.
+* A `start`, `progress`, or `complete` event may appear at most once per task
+  per date; duplicates are a validation error rather than being resolved by
+  file order. (`note` is exempt and combines instead.)
 * Resulting progress must stay within `0%`–`100%`.
 * `progress 100%` does **not** complete a task; only `complete` does.
 * The referenced task must exist.
@@ -465,8 +472,8 @@ scheduler, or CLI today:
   constraints are supported; see [Constraints](#constraints).
 * Task-level calendars, working hours, holidays, and calendar-aware
   scheduling. A `calendar:` name is parsed and stored but never applied.
-* Month (`m`) durations. `parse_duration` understands `m` as 30 days, but no
-  syntax pattern reaches it, so `5m` on a task line is not a duration.
+* Month (`m`) durations. The unit is not supported anywhere; `parse_duration`
+  rejects it, and no syntax pattern accepts it.
 * Baselines, revised plans, and plan version history.
 * Multiple projects per file.
 * Quoted or escaped strings.
@@ -484,6 +491,4 @@ tracked in `ROADMAP.md`.
 2. **Inline comments are absorbed into names.** `task 1.2 Design 5d ; rush`
    produces a name of `Design 5d ; rush` and an undated task rather than a
    clear comment error.
-3. **Same-day event order is file order.** `progress` written before `start` on
-   the same date is rejected rather than reordered by lifecycle precedence.
 

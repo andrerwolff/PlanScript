@@ -547,3 +547,177 @@ class ValidateInvoiceDates(unittest.TestCase):
         project = self.parser.parse(plan)
 
         self.assertEqual(len(project.tracker.invoice_events), 1)
+
+
+class TestSameDayEvents(unittest.TestCase):
+    """Same-day events: duplicates are rejected, notes combine, and
+    lifecycle precedence (start -> progress -> complete) overrides
+    file order."""
+
+    def setUp(self):
+        self.parser = Parser()
+
+    # ---------------------------------------------------------
+    # Duplicate rejection
+    # ---------------------------------------------------------
+
+    def test_duplicate_same_day_start_is_rejected(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1.1 First Task 5d
+
+        ;Tracking
+        2026-09-11 1.1 start
+        2026-09-11 1.1 start
+        """)
+
+        with self.assertRaises(ValidationError) as context:
+            self.parser.parse(plan)
+
+        self.assertIn("Duplicate start event", str(context.exception))
+
+    def test_duplicate_same_day_progress_is_rejected(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1.1 First Task 5d
+
+        ;Tracking
+        2026-09-11 1.1 start
+        2026-09-11 1.1 progress 40%
+        2026-09-11 1.1 progress 60%
+        """)
+
+        with self.assertRaises(ValidationError) as context:
+            self.parser.parse(plan)
+
+        self.assertIn("Duplicate progress event", str(context.exception))
+
+    def test_duplicate_same_day_complete_is_rejected(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1.1 First Task 5d
+
+        ;Tracking
+        2026-09-11 1.1 start
+        2026-09-11 1.1 complete
+        2026-09-11 1.1 complete
+        """)
+
+        with self.assertRaises(ValidationError) as context:
+            self.parser.parse(plan)
+
+        self.assertIn("Duplicate complete event", str(context.exception))
+
+    def test_progress_on_different_days_is_allowed(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1.1 First Task 5d
+
+        ;Tracking
+        2026-09-11 1.1 start
+        2026-09-11 1.1 progress 40%
+        2026-09-12 1.1 progress 80%
+        """)
+
+        project = self.parser.parse(plan)
+        state = project.tracker.get_task_state("1.1")
+
+        self.assertEqual(state.percent_complete, 80)
+
+    # ---------------------------------------------------------
+    # Note combining
+    # ---------------------------------------------------------
+
+    def test_same_day_notes_combine_with_pipe(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1.1 First Task 5d
+
+        ;Tracking
+        2026-09-11 1.1 note Waiting on permits
+        2026-09-11 1.1 note Called the city
+        """)
+
+        project = self.parser.parse(plan)
+
+        self.assertEqual(len(project.tracker.task_events), 1)
+        self.assertEqual(
+            project.tracker.task_events[0].info,
+            "Waiting on permits | Called the city"
+        )
+
+    def test_notes_on_different_days_stay_separate(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1.1 First Task 5d
+
+        ;Tracking
+        2026-09-11 1.1 note Day one note
+        2026-09-12 1.1 note Day two note
+        """)
+
+        project = self.parser.parse(plan)
+
+        self.assertEqual(len(project.tracker.task_events), 2)
+
+    # ---------------------------------------------------------
+    # Same-day lifecycle precedence
+    # ---------------------------------------------------------
+
+    def test_progress_above_start_same_day_is_reordered(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1.1 First Task 5d
+
+        ;Tracking
+        2026-09-11 1.1 progress 25%
+        2026-09-11 1.1 start
+        """)
+
+        project = self.parser.parse(plan)
+        state = project.tracker.get_task_state("1.1")
+
+        self.assertEqual(state.status, TaskStatus.IN_PROGRESS)
+        self.assertEqual(state.percent_complete, 25)
+
+    def test_start_progress_complete_same_day_any_order(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1.1 First Task 5d
+
+        ;Tracking
+        2026-09-11 1.1 complete
+        2026-09-11 1.1 progress 50%
+        2026-09-11 1.1 start
+        """)
+
+        project = self.parser.parse(plan)
+        state = project.tracker.get_task_state("1.1")
+
+        self.assertEqual(state.status, TaskStatus.COMPLETED)
+        self.assertEqual(state.percent_complete, 100)
+
+    def test_file_order_is_still_used_across_days(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1.1 First Task 5d
+
+        ;Tracking
+        2026-09-12 1.1 progress 25%
+        2026-09-11 1.1 start
+        """)
+
+        project = self.parser.parse(plan)
+        state = project.tracker.get_task_state("1.1")
+
+        self.assertEqual(state.status, TaskStatus.IN_PROGRESS)
+        self.assertEqual(state.percent_complete, 25)

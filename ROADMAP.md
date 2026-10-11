@@ -73,7 +73,7 @@ Work items are tagged with the modules they touch.
 
 **Quality baseline**
 
-* 298 `unittest` tests covering parser errors, CPM examples,
+* 307 `unittest` tests covering parser errors, CPM examples,
   dependency types, soft and mandatory constraints, tracking, budgets,
   variance, reports, data-date behavior, and CLI behavior.
 
@@ -97,8 +97,9 @@ problem.
   (no unit, unknown unit, embedded space, signed value) and raise a
   `ParseError` naming the line and token.
 * Give inline comments their own explicit error, or decide to support them.
-* Reconcile the `m` (month) unit: either accept `5m` on task lines with a
-  documented 30-day definition, or reject it explicitly.
+* Reconcile the `m` (month) unit — [DECIDED/COMPLETED] the unit is not
+  supported: `parse_duration` rejects it explicitly, no syntax pattern accepts
+  it, and `SYNTAX.md` documents the rejection.
 * Acceptance: parser tests for each rejected shape, plus `SYNTAX.md` updated to
   remove the corresponding "sharp edge".
 
@@ -106,10 +107,11 @@ problem.
 
 The tracking design is written; these rules are not yet enforced:
 
-1. **Same-day lifecycle precedence** — within one date, events should be
-   applied as `start → progress → complete` regardless of file order. Today
-   same-date order is file order, so `progress` written above `start` is
-   rejected.
+1. **Same-day lifecycle precedence** — [COMPLETED] within one date, events are
+   applied as `start → progress → complete` regardless of file order
+   (`Tracker.DIRECTIVE_PRECEDENCE` orders the sort in `get_all_task_events` and
+   `get_tasks_events`). Tested in `test_tracking.py` and documented in
+   `SYNTAX.md`.
 2. **Future-dated events as a validation error** — [SETTLED] no parse-time
    rejection. Every derived figure is measured to an explicit data date
    (`as_of`, default today), events after that date are excluded, and
@@ -117,8 +119,11 @@ The tracking design is written; these rules are not yet enforced:
    (`Tracker.future_dated_events`). So `Full_Plan.plan`'s `2026-10-11` event no
    longer distorts a report run on an earlier date. The decision is documented
    in `SYNTAX.md` under the tracking lifecycle rules.
-3. **Duplicate same-day events** — two `progress` events for one task on one
-   date must be rejected rather than resolved by file order.
+3. **Duplicate same-day events** — [COMPLETED] two `start`, `progress`, or
+   `complete` events for one task on one date are rejected in
+   `Tracker.add_task_event`. Same-day `note`s are allowed and combined into one
+   event, separated by ` | `. Tested in `test_tracking.py` and documented in
+   `SYNTAX.md`.
 4. **Tracking on summary tasks** — currently accepted silently. Decide: reject,
    derive from leaves, or allow with rollup, then enforce and document.
 5. **Date-only line with no entries** — [COMPLETED] the parser rejects a

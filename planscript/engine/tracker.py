@@ -32,6 +32,16 @@ class EventDirective(Enum):
     COMPLETE = "complete"
     NOTE = "note"
 
+#: Same-day lifecycle precedence: within one date, events are applied as
+#: start -> progress -> complete regardless of file order. Notes rank last;
+#: they never affect derived state.
+DIRECTIVE_PRECEDENCE = {
+    EventDirective.START: 0,
+    EventDirective.PROGRESS: 1,
+    EventDirective.COMPLETE: 2,
+    EventDirective.NOTE: 3,
+}
+
 class TaskStatus(Enum):
     """Derived status of a task based on its tracking events."""
 
@@ -273,10 +283,31 @@ class Tracker:
         return total_cost
 
     def add_task_event(self, task_event:TaskEvent):
+        """Append a task event, combining notes and rejecting duplicates.
 
-        if task_event in self.task_events:
-            raise ValidationError(f"Event '{task_event}' already exists in the project.")
-        
+        A `note` may repeat for one task on one date; repeat notes are
+        combined into the existing note, separated by ` | `. Any other
+        directive may appear at most once per task per date, so duplicates
+        are rejected rather than resolved by file order.
+        """
+        if task_event.directive == EventDirective.NOTE:
+            for existing in self.task_events:
+                if (existing.directive == EventDirective.NOTE
+                        and existing.task_id == task_event.task_id
+                        and existing.date == task_event.date):
+                    parts = [part for part in (existing.info, task_event.info) if part]
+                    existing.info = " | ".join(parts)
+                    return
+        else:
+            for existing in self.task_events:
+                if (existing.directive == task_event.directive
+                        and existing.task_id == task_event.task_id
+                        and existing.date == task_event.date):
+                    raise ValidationError(
+                        f"Duplicate {task_event.directive.value} event for task "
+                        f"'{task_event.task_id}' on {task_event.date}."
+                    )
+
         self.task_events.append(task_event)
 
     def add_invoice_event(self, invoice:Invoice):
@@ -287,21 +318,29 @@ class Tracker:
         self.invoice_events.append(invoice)
 
     def get_all_task_events(self, as_of=None):
-        """Return every task event up to the data date, in chronological order."""
+        """Return every task event up to the data date, in chronological order.
+
+        Same-day events are ordered by lifecycle precedence (start, progress,
+        complete, note) rather than file order.
+        """
 
         as_of = self._data_date(as_of)
-        events = sorted(self.task_events, key=attrgetter("date"))
+        events = sorted(self.task_events, key=lambda e: (e.date, DIRECTIVE_PRECEDENCE[e.directive]))
         return [event for event in events if event.date <= as_of]
 
     def get_tasks_events(self, task_id, as_of=None):
-        """Return a task's events up to the data date, in chronological order."""
+        """Return a task's events up to the data date, in chronological order.
+
+        Same-day events are ordered by lifecycle precedence (start, progress,
+        complete, note) rather than file order.
+        """
 
         as_of = self._data_date(as_of)
         task_events = []
         for event in self.task_events:
             if event.task_id == task_id:
                 task_events.append(event)
-        events = sorted(task_events,key=attrgetter('date'))
+        events = sorted(task_events, key=lambda e: (e.date, DIRECTIVE_PRECEDENCE[e.directive]))
         return [event for event in events if event.date <= as_of]
 
     def get_latest_task_event(self, as_of=None):
