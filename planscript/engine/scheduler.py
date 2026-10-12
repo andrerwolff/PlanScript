@@ -404,21 +404,25 @@ class Scheduler:
                 starts.append(task_id)
 
         paths = []
-        # Walk forward from each critical starting task.
-        def walk(task_id, path):
-            path = path + [task_id]
+        # Walk forward from each critical starting task. The walk is
+        # iterative (an explicit stack of (task_id, path-prefix) pairs)
+        # rather than recursive, so a critical chain is not limited by
+        # Python's recursion depth. Successors are pushed in reverse so
+        # they pop in the same order a recursive walk would visit them.
+        stack = [(start_id, ()) for start_id in reversed(starts)]
+
+        while stack:
+            task_id, prefix = stack.pop()
+            path = prefix + (task_id,)
 
             successors = critical_successors[task_id]
 
             if not successors:
-                paths.append(path)
-                return
+                paths.append(list(path))
+                continue
 
-            for successor_id in successors:
-                walk(successor_id, path)
-                
-        for start_id in starts:
-            walk(start_id, [])
+            for successor_id in reversed(successors):
+                stack.append((successor_id, path))
 
         return paths
 

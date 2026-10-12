@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "planscript"
+version = "0.1.0"
+description = "PlanScript project planning and scheduling tool for .plan files."
+requires-python = ">=3.13"
+# The tool is standard-library only; there are no runtime dependencies.
+dependencies = []
+
+[project.optional-dependencies]
+# The test suite is stdlib `unittest`, so there are no third-party dev
+# dependencies yet. The extra exists as the declared place for them.
+dev = []
+
+[project.scripts]
+# `planscript <command> <file.plan> [options]` — same exit codes as
+# `python -m planscript` (the generated wrapper calls sys.exit(main())).
+planscript = "planscript.app:main"
+
+[tool.setuptools]
+# Listed explicitly instead of relying on auto-discovery: the repository root
+# also holds the top-level `_archive/` directory and source-less stale
+# package directories (`planscript/parser`, `planscript/serializer`), which
+# flat-layout discovery would otherwise pick up.
+packages = [
+    "planscript",
+    "planscript.cli",
+    "planscript.engine",
+    "planscript.model",
+    "planscript.tests",
+]

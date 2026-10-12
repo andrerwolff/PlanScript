@@ -73,9 +73,10 @@ Work items are tagged with the modules they touch.
 
 **Quality baseline**
 
-* 307 `unittest` tests covering parser errors, CPM examples,
+* 311 `unittest` tests covering parser errors, CPM examples,
   dependency types, soft and mandatory constraints, tracking, budgets,
-  variance, reports, data-date behavior, and CLI behavior.
+  variance, reports, data-date behavior, CLI behavior, and scaling on a
+  generated 3,000-leaf plan.
 
 ---
 
@@ -213,10 +214,55 @@ emit syntax the parser accepts.
 
 * **P3-5** Add a `pyproject.toml` (packaging, console script entry point,
   Python version, dev extras) so the tool installs as `planscript` rather than
-  requiring `python -m planscript` from the repository root.
+  requiring `python -m planscript` from the repository root. [COMPLETED]
+
+  `pyproject.toml` declares the setuptools build backend, `requires-python
+  >= 3.13`, no runtime dependencies (stdlib only), an empty `dev` extra, and
+  the `planscript = planscript.app:main` console script. Package discovery is
+  an explicit list so `_archive/` and the source-less `planscript/parser` and
+  `planscript/serializer` directories are not packaged. `pip install -e .`
+  then `planscript check Simple.plan` works from any directory with the
+  documented exit codes; `python -m planscript` is unchanged. `USE.md` and
+  `DESIGN.md` show both entry points.
 * **P3-6** Performance: scheduling and reporting currently iterate the full task
   and dependency lists repeatedly. Check scaling on a few thousand tasks and
-  introduce indexes only where measurement justifies them.
+  introduce indexes only where measurement justifies them. [COMPLETED]
+
+  Measured with the new generator/benchmark
+  (`python -m planscript.tests.scale_bench`), which builds plans of a
+  three-level hierarchy with a dependency chain, budgets, tracking events,
+  and invoices. Before any change, a 3,060-task plan took ~7.4s end to end
+  (parse 2.7s, status build 4.2s) and any plan with ~1,000+ tasks on one
+  critical path crashed scheduling with `RecursionError`. Changes, each kept
+  only because the profile showed the cost:
+
+  * `Scheduler._find_critical_paths` walks the critical network with an
+    explicit stack instead of recursion, so chain length is no longer capped
+    by Python's recursion limit.
+  * `Tracker` indexes task events and invoice allocations by task ID
+    (rebuilt lazily when the source list's length changes, so direct list
+    mutation stays correct), making state derivation and actual cost
+    proportional to a task's own history.
+  * `Project.add_dependency` / `add_constraint` resolve membership by task
+    number instead of scanning every task with `Task.__eq__` (the forecast
+    copy of the project had made ~150M equality calls at 10k tasks).
+  * `Project.add_task` re-sorts only when a number breaks the existing
+    order, and `sort_tasks` sorts items without a per-comparison key
+    function; `Parser.resolve_dependencies` detects duplicates with a keyed
+    set instead of rescanning all dependencies.
+
+  After: 3,060 tasks run the full pipeline (parse, validate, schedule,
+  budget, status build, render) in ~1.4s, roughly 5× faster than the
+  baseline, and 10,060 tasks complete in ~11s. `test_scaling.py` pins
+  correctness on a generated 3,000-leaf plan (shape, single 3,000-task
+  critical path, tracking states, costs, report size) plus a generous
+  wall-clock ceiling; `scale_bench.py` remains the measurement tool.
+  Parse time still grows superlinearly: `add_task` re-sorts the task dict on
+  each out-of-order insert (~90% of adds for hierarchical numbering, since
+  `1.1.10` sorts before `1.1.9`). Deferring the sort to `validate()` would
+  fix that but changes iteration order — and therefore validation-error
+  precedence and scheduler tie-breaks — for code that reads `project.tasks`
+  between adds, so it is deliberately not done without a demonstrated need.
 
 ## P3 — Baselines, forecasting, and reporting depth
 

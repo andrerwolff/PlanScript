@@ -455,6 +455,12 @@ class Parser:
             raise ParseError(f"Line {line_number}: invalid date '{value}'")
 
     def resolve_dependencies(self, project, pending_dependencies):
+        # Duplicate detection is keyed rather than scanned: a dependency is
+        # identified by its two task numbers, type, and lag.
+        seen = {(dependency.predecessor.number, dependency.successor.number,
+                 dependency.dep_type.value, dependency.lag)
+                for dependency in project.dependencies}
+
         for d in pending_dependencies:
             if d.predecessor_id not in project.tasks:
                 raise ParseError(f"Line {d.line_number}: unknown predecessor task '{d.predecessor_id}'")
@@ -465,15 +471,11 @@ class Parser:
 
             predecessor = project.tasks[d.predecessor_id]
             successor = project.tasks[d.successor_id]
-            
-            for existing in project.dependencies:
-                if (
-                    existing.predecessor is predecessor
-                    and existing.successor is successor
-                    and existing.dep_type.value == d.dep_type
-                    and existing.lag == d.lag
-                ):
-                    raise ParseError(f"Line {d.line_number}: duplicate dependency '{d.predecessor_id}' > '{d.successor_id}'")
+
+            key = (d.predecessor_id, d.successor_id, d.dep_type, d.lag)
+            if key in seen:
+                raise ParseError(f"Line {d.line_number}: duplicate dependency '{d.predecessor_id}' > '{d.successor_id}'")
+            seen.add(key)
             project.add_dependency(predecessor, successor, d.dep_type, d.lag, d.lag_unit)
 
     def resolve_constraints(self, project:Project, pending_constraints: list[PendingConstraint]) -> None:

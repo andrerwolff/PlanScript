@@ -77,6 +77,10 @@ class Project:
     def add_task(self, task: Task) -> None:
         """Add a task to the project.
 
+        Tasks are kept sorted by task number. A number that sorts last is
+        already in place after insertion, so bulk adds in sorted order do
+        not re-sort the whole project.
+
         Raises:
             ValueError: If another task already uses the task number.
         """
@@ -84,8 +88,10 @@ class Project:
         if task.number in self.tasks:
             raise ValueError(f"Task with number '{task.number}' already exists in the project.")
 
+        last_number = next(reversed(self.tasks), None)
         self.tasks[task.number] = task
-        self.sort_tasks()
+        if last_number is not None and task.number < last_number:
+            self.sort_tasks()
 
     def remove_task(self, task_number: str) -> None:
         """Remove a task and all dependencies involving it.
@@ -150,10 +156,14 @@ class Project:
         self.sort_tasks()
 
     def sort_tasks(self) -> None:
-        """Keep tasks ordered by PlanScript task number."""
+        """Keep tasks ordered by PlanScript task number.
 
-        self.tasks = dict(sorted(self.tasks.items(), key=lambda item: item[0]))
-        #print(f"Tasks in project '{self.name}' sorted by task number.")
+        Sorting the (number, task) items compares numbers first; task
+        numbers are unique, so tasks are never compared and no key
+        function is needed.
+        """
+
+        self.tasks = dict(sorted(self.tasks.items()))
 
     def list_tasks(self) -> list[Task]:
         return list(self.tasks.values())
@@ -168,9 +178,14 @@ class Project:
                 is made dependent on itself.
         """
 
-        if predecessor not in self.tasks.values():
+        # Membership is resolved by task number rather than by scanning the
+        # task list; a task's number is part of its identity, so the stored
+        # task with that number is the only possible equal task.
+        stored_predecessor = self.tasks.get(predecessor.number)
+        if stored_predecessor is None or stored_predecessor != predecessor:
             raise ValueError(f"Predecessor task with number '{predecessor}' does not exist in the project.")
-        if successor not in self.tasks.values():
+        stored_successor = self.tasks.get(successor.number)
+        if stored_successor is None or stored_successor != successor:
             raise ValueError(f"Successor task with number '{successor}' does not exist in the project.")
         if predecessor == successor:
             raise ValueError("Predecessor and successor cannot be the same task.")
@@ -247,7 +262,8 @@ class Project:
                 project has no start date to anchor the constraint to.
         """
 
-        if task not in self.tasks.values():
+        stored = self.tasks.get(task.number)
+        if stored is None or stored != task:
             raise ValueError(f"Task '{task.number}' does not exist in the project.")
         if task.duration is None:
             raise ValidationError(f"Summary task '{task.number}' cannot have a constraint; its dates are derived from its children.")

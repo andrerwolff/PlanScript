@@ -70,7 +70,8 @@ wired into the CLI; see `planscript/serializer/`.)
 
 | Module | Responsibility |
 | --- | --- |
-| `planscript/__main__.py` | Module entry point for `python -m planscript`. |
+| `pyproject.toml` | Packaging metadata, Python version, and the `planscript` console script entry point. |
+| `planscript/__main__.py` | Module entry point for `python -m planscript` (no install required). |
 | `planscript/app.py` | Argument parsing, subcommands, exit codes, error reporting. |
 | `planscript/exceptions.py` | `ParseError`, `ValidationError`, `SchedulingError`, `BudgetingError`. |
 | `planscript/engine/parser.py` | Line-oriented parser: `.plan` text → `Project`. |
@@ -83,7 +84,7 @@ wired into the CLI; see `planscript/serializer/`.)
 | `planscript/model/budget.py` | `Budget` (resolved/derived budget). |
 | `planscript/model/schedule.py` | `Schedule` (derived CPM results and dates). |
 | `planscript/engine/scheduler.py` | `Scheduler`: CPM forward/backward pass, float, critical paths, dates. |
-| `planscript/engine/tracker.py` | `Tracker`, `TaskEvent`, `TaskState`, `Invoice`, directives and statuses. |
+| `planscript/engine/tracker.py` | `Tracker`, `TaskEvent`, `TaskState`, `Invoice`, directives and statuses. Per-task indexes over events and invoice allocations keep derived actuals proportional to a task's own history. |
 | `planscript/engine/analyzer.py` | `Analyzer`, `TaskVariance`: planned vs. actual variance and progress. |
 | `planscript/engine/budgeter.py` | `Budgeter`: resolves explicit and weighted budgets. |
 | `planscript/engine/forecaster.py` | `Forecaster`: forecast schedule from actuals; finished work pinned to its actual finish, remaining work floored at the data date. |
@@ -91,7 +92,7 @@ wired into the CLI; see `planscript/serializer/`.)
 | `planscript/cli/display.py` | Table rendering, schedule/budget views, legacy interactive menus. |
 | `planscript/cli/gantt.py` | Textual Gantt rendering. |
 | `planscript/serializer/plan_serializer.py` | `Project` → `.plan` text. Incomplete; not wired into the CLI. |
-| `planscript/tests/` | `unittest` suite (274 tests) plus shared project fixtures. |
+| `planscript/tests/` | `unittest` suite (311 tests) plus shared project fixtures. |
 | `_archive/` | Superseded interactive CLI and the original standalone invoice model. |
 
 ## Model
@@ -474,7 +475,10 @@ date. That entry is excluded from every figure and announced instead.
 
 ## CLI
 
-Entry point: `python -m planscript <command> <file.plan>` (`planscript/app.py`).
+Entry points: `planscript <command> <file.plan>` (installed via
+`pip install -e .`, from the `pyproject.toml` console script) and
+`python -m planscript <command> <file.plan>` (no install required). Both run
+`planscript/app.py:main` and share the same exit codes.
 
 | Command | Options | Behavior |
 | --- | --- | --- |
@@ -573,7 +577,7 @@ the rule:
 ## Testing
 
 The suite uses Python's built-in `unittest`; there is no third-party test
-dependency. Currently **307 tests**; all pass.
+dependency. Currently **311 tests**; all pass.
 
 ```powershell
 python -m unittest discover -s planscript/tests -t .
@@ -590,6 +594,8 @@ python -m unittest discover -s planscript/tests -t .
 | `test_reporter.py` | Status report figures, budget/progress invariants, data notices, and forecast fields. |
 | `test_forecaster.py` | Forecast durations and pins per tracking status, data-date edge cases, failure modes. |
 | `test_cli.py` | Subcommand behavior and exit codes through subprocesses. |
+| `test_scaling.py` | A generated 3,000-leaf plan: shape, long-chain critical path, tracking states and costs at scale, and a wall-clock ceiling for the status pipeline. |
+| `scale_bench.py` | Synthetic plan generator and per-stage timing benchmark (`python -m planscript.tests.scale_bench`); shared with `test_scaling.py`, not collected as tests. |
 | `test_projects.py` | Shared in-memory project fixtures for the scheduler tests. |
 
 Test conventions: fixtures live in `test_projects.py`; CLI tests call

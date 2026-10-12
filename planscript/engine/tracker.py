@@ -123,6 +123,45 @@ class Tracker:
     task_events: list[TaskEvent] = field(default_factory=list)
     invoice_events: list[Invoice] = field(default_factory=list)
 
+    # Derived indexes over the authoritative lists above. They are rebuilt
+    # lazily whenever a list's length changes, so they can never disagree
+    # with the history even if a caller mutates a list directly.
+    _event_index: dict[str, list[TaskEvent]] = field(default_factory=dict, init=False, repr=False, compare=False)
+    _event_index_size: int = field(default=0, init=False, repr=False, compare=False)
+    _allocation_index: dict[str, list[tuple[date, Decimal]]] = field(default_factory=dict, init=False, repr=False, compare=False)
+    _allocation_index_size: int = field(default=0, init=False, repr=False, compare=False)
+
+    def _events_by_task(self) -> dict[str, list[TaskEvent]]:
+        """Return this tracker's task events indexed by task ID.
+
+        Deriving state for one task should cost time proportional to that
+        task's own events, not to the whole history, so repeated calls scan
+        an index instead of the full event list.
+        """
+        if self._event_index_size != len(self.task_events):
+            index = {}
+            for event in self.task_events:
+                index.setdefault(event.task_id, []).append(event)
+            self._event_index = index
+            self._event_index_size = len(self.task_events)
+        return self._event_index
+
+    def _allocations_by_task(self) -> dict[str, list[tuple[date, Decimal]]]:
+        """Return invoice allocations indexed by task ID.
+
+        Each entry is an `(invoice_date, amount)` pair in invoice order, so
+        a task's actual cost costs time proportional to its own allocations
+        rather than to every invoice in the project.
+        """
+        if self._allocation_index_size != len(self.invoice_events):
+            index = {}
+            for invoice in self.invoice_events:
+                for task_id, amount in invoice.allocations.items():
+                    index.setdefault(task_id, []).append((invoice.invoice_date, amount))
+            self._allocation_index = index
+            self._allocation_index_size = len(self.invoice_events)
+        return self._allocation_index
+
     @staticmethod
     def _data_date(as_of):
         """Return the data date used to derive actual values.
@@ -262,9 +301,9 @@ class Tracker:
 
         cost = Decimal("0")
 
-        for invoice in self.invoice_events:
-            if invoice.invoice_date <= as_of and task_id in invoice.allocations:
-                cost += invoice.allocations[task_id]
+        for invoice_date, amount in self._allocations_by_task().get(task_id, ()):
+            if invoice_date <= as_of:
+                cost += amount
 
         if self.hierarchy.is_summary(task_id):
             for child_id in self.hierarchy.get_children(task_id):
@@ -290,18 +329,18 @@ class Tracker:
         directive may appear at most once per task per date, so duplicates
         are rejected rather than resolved by file order.
         """
+        own_events = self._events_by_task().setdefault(task_event.task_id, [])
+
         if task_event.directive == EventDirective.NOTE:
-            for existing in self.task_events:
+            for existing in own_events:
                 if (existing.directive == EventDirective.NOTE
-                        and existing.task_id == task_event.task_id
                         and existing.date == task_event.date):
                     parts = [part for part in (existing.info, task_event.info) if part]
                     existing.info = " | ".join(parts)
                     return
         else:
-            for existing in self.task_events:
+            for existing in own_events:
                 if (existing.directive == task_event.directive
-                        and existing.task_id == task_event.task_id
                         and existing.date == task_event.date):
                     raise ValidationError(
                         f"Duplicate {task_event.directive.value} event for task "
@@ -309,6 +348,8 @@ class Tracker:
                     )
 
         self.task_events.append(task_event)
+        own_events.append(task_event)
+        self._event_index_size = len(self.task_events)
 
     def add_invoice_event(self, invoice:Invoice):
 
@@ -336,10 +377,7 @@ class Tracker:
         """
 
         as_of = self._data_date(as_of)
-        task_events = []
-        for event in self.task_events:
-            if event.task_id == task_id:
-                task_events.append(event)
+        task_events = self._events_by_task().get(task_id, ())
         events = sorted(task_events, key=lambda e: (e.date, DIRECTIVE_PRECEDENCE[e.directive]))
         return [event for event in events if event.date <= as_of]
 

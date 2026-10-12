@@ -1,8 +1,19 @@
 # PlanScript — Usage
 
 ```powershell
-python -m planscript <command> <file_name.plan> [options]
+planscript <command> <file_name.plan> [options]
 ```
+
+Install the tool once into a virtual environment to get the `planscript`
+command:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -e .
+```
+
+The same commands are also available without installing, from the repository
+root, as `python -m planscript <command> <file_name.plan> [options]`.
 
 PlanScript project planning and scheduling tool. The `.plan` file is read-only:
 commands parse, validate, calculate, and report, but never modify the file.
@@ -29,7 +40,7 @@ options:
 Parses and validates the file, then prints the project name and `Valid`.
 
 ```powershell
-python -m planscript check Full_Plan.plan
+planscript check Full_Plan.plan
 ```
 
 ```text
@@ -44,7 +55,7 @@ and finish) plus task, dependency, and tracking event counts. It does not
 calculate a schedule.
 
 ```powershell
-python -m planscript summary Simple.plan
+planscript summary Simple.plan
 ```
 
 ### `schedule`
@@ -66,8 +77,8 @@ With no display option, all three views plus the critical path(s) are shown.
 * `-g` — textual Gantt bars, with critical tasks marked.
 
 ```powershell
-python -m planscript schedule Simple.plan -d
-python -m planscript schedule Detailed.plan
+planscript schedule Simple.plan -d
+planscript schedule Detailed.plan
 ```
 
 ### `status`
@@ -87,7 +98,7 @@ Reports project status, progress, overdue tasks, blocked tasks with their
 blocking predecessors and root causes, late tasks, and the look-ahead windows.
 
 ```powershell
-python -m planscript status Simple.plan -ao 2026-09-20 -la 14
+planscript status Simple.plan -ao 2026-09-20 -la 14
 ```
 
 ### `budget`
@@ -106,7 +117,7 @@ basis (`explicit`, weight, `rollup`, or `unallocated`), the project total, and
 any unallocated tasks.
 
 ```powershell
-python -m planscript budget Simple.plan
+planscript budget Simple.plan
 ```
 
 ## Exit codes
