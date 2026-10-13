@@ -3,8 +3,8 @@ import textwrap
 from datetime import date
 from decimal import Decimal
 
-from planscript.exceptions import   ValidationError, ParseError
-from planscript.engine.tracker import   TaskEvent, Tracker, EventDirective, TaskStatus
+from planscript.exceptions import ValidationError, ParseError
+from planscript.model.tracker import EventDirective, TaskStatus
 from planscript.engine.parser import Parser
 
 class ValidateTracker(unittest.TestCase):

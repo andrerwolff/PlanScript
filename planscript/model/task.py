@@ -6,7 +6,7 @@ distinguishes leaf tasks from summary tasks.
 """
 
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 @dataclass

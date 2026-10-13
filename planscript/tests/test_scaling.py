@@ -19,7 +19,7 @@ from planscript.engine.budgeter import Budgeter
 from planscript.engine.parser import Parser
 from planscript.engine.reporter import ReportBuilder
 from planscript.engine.scheduler import Scheduler
-from planscript.engine.tracker import TaskStatus
+from planscript.model.tracker import TaskStatus
 from planscript.tests.scale_bench import AS_OF, build_plan_text
 
 #: Generous wall-clock ceiling for the whole 3,000-leaf pipeline. Measured

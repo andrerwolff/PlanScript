@@ -316,9 +316,9 @@ each one is a decision waiting to be made, not an oversight.
 
 | Decision | State | Where it lands |
 | --- | --- | --- |
-| Event representation in the model | **Settled.** `TaskEvent(date, task_id, directive, info)`; events carry no independent IDs. | `planscript/engine/tracker.py` |
+| Event representation in the model | **Settled.** `TaskEvent(date, task_id, directive, info)`; events carry no independent IDs. | `planscript/model/tracker.py` |
 | Tracking validation architecture (parser vs. project validation) | **Partly settled.** Syntax and references fail in the parser; lifecycle rules fail during state derivation. Revisit when tracking is data-date aware. | P1-2 |
-| Incremental progress syntax (`+10%`, `-20%`) | **Implemented** in `TaskState._derive`. | `planscript/engine/tracker.py` |
+| Incremental progress syntax (`+10%`, `-20%`) | **Implemented** in `TaskState._derive`. | `planscript/model/tracker.py` |
 | Late / Blocked / Overdue task status | **Implemented** as `ScheduleCondition` in the reporter. | `planscript/engine/reporter.py` |
 | Variance calculations | **Partly settled.** Planned-vs-actual variance is implemented against the calculated schedule. Whether variance should be measured against a *revised* plan or a *baseline* is still open; forecast-vs-target is implemented (P3-8). | P3-7 |
 | How tracking interacts with task hierarchy | **Open.** Tracking a summary task is currently accepted with no defined semantics. | P1-2 |

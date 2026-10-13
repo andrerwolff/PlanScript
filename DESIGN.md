@@ -83,8 +83,8 @@ wired into the CLI; see `planscript/serializer/`.)
 | `planscript/model/calendar.py` | `Calendar` (working days, holidays). Model only; not yet applied. |
 | `planscript/model/budget.py` | `Budget` (resolved/derived budget). |
 | `planscript/model/schedule.py` | `Schedule` (derived CPM results and dates). |
+| `planscript/model/tracker.py` | `Tracker`, `TaskEvent`, `TaskState`, `Invoice`, directives and statuses: the authoritative tracking history embedded in the `Project` aggregate. Per-task indexes over events and invoice allocations keep derived actuals proportional to a task's own history. Lives in the model layer (it depends on no engine module), so `model` never imports `engine`. |
 | `planscript/engine/scheduler.py` | `Scheduler`: CPM forward/backward pass, float, critical paths, dates. |
-| `planscript/engine/tracker.py` | `Tracker`, `TaskEvent`, `TaskState`, `Invoice`, directives and statuses. Per-task indexes over events and invoice allocations keep derived actuals proportional to a task's own history. |
 | `planscript/engine/analyzer.py` | `Analyzer`, `TaskVariance`: planned vs. actual variance and progress. |
 | `planscript/engine/budgeter.py` | `Budgeter`: resolves explicit and weighted budgets. |
 | `planscript/engine/forecaster.py` | `Forecaster`: forecast schedule from actuals; finished work pinned to its actual finish, remaining work floored at the data date. |

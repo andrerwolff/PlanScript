@@ -1,8 +1,5 @@
-from operator import attrgetter
 from decimal import Decimal, ROUND_HALF_UP
-from datetime import date
 
-from planscript.model.task import Task
 from planscript.model.project import Project
 from planscript.engine.analyzer import Analyzer
 

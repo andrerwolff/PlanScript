@@ -26,7 +26,7 @@ from datetime import date, timedelta
 
 from planscript.model.project import Project
 from planscript.model.schedule import Schedule
-from planscript.engine.tracker import TaskStatus, TaskState, Invoice
+from planscript.model.tracker import TaskStatus, TaskState
 from planscript.engine.analyzer import Analyzer
 from planscript.engine.forecaster import Forecaster
 from planscript.exceptions import SchedulingError

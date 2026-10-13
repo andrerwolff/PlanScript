@@ -6,10 +6,9 @@ from decimal import Decimal
 from planscript.exceptions import ParseError
 from planscript.model.project import Project
 from planscript.model.task import Task
-from planscript.model.dependency import Dependency
-from planscript.model.constraint import Constraint, ConstraintType
+from planscript.model.constraint import ConstraintType
 from planscript.model.hierarchy import TaskHierarchy
-from planscript.engine.tracker import TaskEvent, EventDirective, Invoice
+from planscript.model.tracker import TaskEvent, EventDirective, Invoice
 
 @dataclass
 class PendingDependency:

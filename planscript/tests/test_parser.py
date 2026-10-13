@@ -6,7 +6,6 @@ from decimal import Decimal
 from planscript.engine.parser import Parser, ParseError
 from planscript.model.project import ValidationError
 from planscript.model.constraint import ConstraintType
-from planscript.model.dependency import DependencyType
 
 class ValidatePlan(unittest.TestCase):
     def setUp(self):

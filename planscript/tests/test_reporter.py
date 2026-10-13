@@ -33,7 +33,7 @@ from planscript.engine.parser import Parser
 from planscript.engine.reporter import (NOT_AVAILABLE, ProjectStatus,
                                         ReportBuilder, ScheduleCondition)
 from planscript.engine.scheduler import Scheduler
-from planscript.engine.tracker import TaskStatus
+from planscript.model.tracker import TaskStatus
 
 
 FIXTURE = textwrap.dedent("""\

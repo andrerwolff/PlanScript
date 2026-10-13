@@ -23,12 +23,10 @@ finished task's actual finish, the scheduler raises `SchedulingError`.
 from datetime import timedelta
 
 from planscript.engine.scheduler import Scheduler
-from planscript.engine.analyzer import Analyzer
-from planscript.engine.tracker import TaskState, TaskStatus
+from planscript.model.tracker import TaskStatus
 from planscript.model.project import Project
 from planscript.model.schedule import Schedule
 from planscript.model.task import Task
-from planscript.model.dependency import Dependency
 from planscript.model.constraint import ConstraintType
 
 class Forecaster:

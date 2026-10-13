@@ -2,7 +2,6 @@ import unittest
 import textwrap
 from datetime import date, timedelta
 
-from planscript.exceptions import   ValidationError, ParseError
 from planscript.engine.scheduler import Scheduler
 from planscript.engine.analyzer import Analyzer
 from planscript.engine.parser import Parser

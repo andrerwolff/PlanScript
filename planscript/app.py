@@ -2,7 +2,6 @@ import argparse
 import sys
 from datetime import date, timedelta
 from pathlib import Path
-from decimal import Decimal
 
 from planscript.model import Project
 from planscript.exceptions import ParseError, SchedulingError, ValidationError, BudgetingError

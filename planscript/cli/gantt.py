@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 def render_gantt(project):
     schedule = project.schedule
     if project.start_date is None:

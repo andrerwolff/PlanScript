@@ -20,7 +20,7 @@ from planscript.model.constraint import Constraint, ConstraintType
 from planscript.model.task import Task
 from planscript.model.hierarchy import TaskHierarchy
 from planscript.model.budget import Budget
-from planscript.engine.tracker import Tracker
+from planscript.model.tracker import Tracker
 from planscript.model.schedule import Schedule
 
 @dataclass
