@@ -616,8 +616,10 @@ The design intent and the implementation are not yet aligned in these areas.
 * The status report lists every task but not the summary sections (overdue,
   blocked, late, upcoming deadlines/starts) that `ROADMAP.md` P1-3 still asks
   for.
-* Tracking design decisions that are not yet implemented: a decision on
-  tracking summary tasks. (Same-day lifecycle precedence and duplicate
+* Tracking on summary tasks — decided (P1-2): `start`, `progress`, and
+  `complete` events are rejected on summary tasks; summary state is derived
+  exclusively from descendant leaf tasks (rollup). `note` events are still
+  allowed on summary tasks. (Same-day lifecycle precedence and duplicate
   same-day detection are enforced; future-dated events are settled: the
   data-date model excludes them and reports list them under `Data Notices`.)
 

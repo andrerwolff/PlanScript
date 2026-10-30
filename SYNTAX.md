@@ -161,8 +161,9 @@ Rules:
 * The unit is required when a duration is present.
 * A duration must be separated from the name by whitespace.
 * Signed or negative durations are rejected with an explicit error.
-* A trailing token that is not a valid duration is folded into the name rather
-  than rejected; see [Known sharp edges](#known-sharp-edges).
+* A trailing token that looks like a duration but is invalid (bad unit, no unit,
+  embedded space, signed value) is rejected with a `ParseError` naming the line
+  and token.
 
 Default behavior:
 
@@ -430,7 +431,9 @@ Anything else, including `progress 50` without `%`, is a parse error.
 * Resulting progress must stay within `0%`–`100%`.
 * `progress 100%` does **not** complete a task; only `complete` does.
 * The referenced task must exist.
-* Tracking is currently accepted on any task, including summary tasks.
+* Tracking events (`start`, `progress`, `complete`) are not allowed on summary
+  tasks; summary state is derived from its descendant leaf tasks. `note` events
+  are still allowed on summary tasks.
 * Events dated after the data date are **not** a parse error. The data date
   (`as_of`, default today) excludes them from derived figures, and the
   `status` report lists them under `Data Notices` so nothing is silently
@@ -479,16 +482,5 @@ scheduler, or CLI today:
 * Quoted or escaped strings.
 * A literal `Tracking` section keyword.
 
-## Known sharp edges
 
-These behave in ways that are surprising for hand-written plans. They are
-tracked in `ROADMAP.md`.
-
-1. **A token that is not a valid duration becomes part of the name.** `task 1.2
-   Design 5m` parses as a task named `Design 5m` with no duration, and then
-   fails validation because a task without children must have a duration. The
-   same happens for typos such as `task 1.2 Design 5 d`.
-2. **Inline comments are absorbed into names.** `task 1.2 Design 5d ; rush`
-   produces a name of `Design 5d ; rush` and an undated task rather than a
-   clear comment error.
 

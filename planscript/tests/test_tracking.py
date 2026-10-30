@@ -721,3 +721,87 @@ class TestSameDayEvents(unittest.TestCase):
 
         self.assertEqual(state.status, TaskStatus.IN_PROGRESS)
         self.assertEqual(state.percent_complete, 25)
+
+    # ---------------------------------------------------------
+    # Tracking on summary tasks
+    # ---------------------------------------------------------
+
+    def test_start_on_summary_task_is_rejected(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1 Summary
+        task 1.1 Leaf Task 5d
+
+        ;Tracking
+        2026-09-11 1 start
+        """)
+
+        with self.assertRaises(ValidationError) as ctx:
+            self.parser.parse(plan)
+
+        self.assertIn("summary task", str(ctx.exception))
+
+    def test_progress_on_summary_task_is_rejected(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1 Summary
+        task 1.1 Leaf Task 5d
+
+        ;Tracking
+        2026-09-11 1 progress 50%
+        """)
+
+        with self.assertRaises(ValidationError) as ctx:
+            self.parser.parse(plan)
+
+        self.assertIn("summary task", str(ctx.exception))
+
+    def test_complete_on_summary_task_is_rejected(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1 Summary
+        task 1.1 Leaf Task 5d
+
+        ;Tracking
+        2026-09-11 1 complete
+        """)
+
+        with self.assertRaises(ValidationError) as ctx:
+            self.parser.parse(plan)
+
+        self.assertIn("summary task", str(ctx.exception))
+
+    def test_note_on_summary_task_is_allowed(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1 Summary
+        task 1.1 Leaf Task 5d
+
+        ;Tracking
+        2026-09-11 1 note Waiting on kickoff
+        """)
+
+        project = self.parser.parse(plan)
+        events = project.tracker.get_tasks_events("1")
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].directive, EventDirective.NOTE)
+
+    def test_tracking_on_leaf_task_still_works(self):
+        plan = textwrap.dedent("""\
+        project: Test
+
+        task 1 Summary
+        task 1.1 Leaf Task 5d
+
+        ;Tracking
+        2026-09-11 1.1 start
+        2026-09-12 1.1 complete
+        """)
+
+        project = self.parser.parse(plan)
+        state = project.tracker.get_task_state("1.1")
+        self.assertEqual(state.status, TaskStatus.COMPLETED)

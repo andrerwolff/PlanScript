@@ -327,6 +327,75 @@ class TestParser(unittest.TestCase):
 
         self.assertEqual(task.duration, None)
 
+    def test_task_invalid_duration_unknown_unit(self):
+        text = textwrap.dedent("""\
+        project: Test
+        task 1.2 Design 5m
+        """)
+        with self.assertRaises(ParseError) as ctx:
+            self.parser.parse(text)
+        self.assertIn("5m", str(ctx.exception))
+
+    def test_task_invalid_duration_embedded_space(self):
+        text = textwrap.dedent("""\
+        project: Test
+        task 1.2 Design 5 d
+        """)
+        with self.assertRaises(ParseError) as ctx:
+            self.parser.parse(text)
+        self.assertIn("embedded space", str(ctx.exception))
+
+    def test_task_inline_comment(self):
+        text = textwrap.dedent("""\
+        project: Test
+        task 1.2 Design 5d ; rush
+        """)
+        with self.assertRaises(ParseError) as ctx:
+            self.parser.parse(text)
+        self.assertIn("inline comments", str(ctx.exception))
+
+    def test_task_valid_duration_still_works(self):
+        text = textwrap.dedent("""\
+        project: Test
+        task 1.2 Design 5d
+        """)
+        project = self.parser.parse(text)
+        task = project.tasks["1.2"]
+        self.assertEqual(task.name, "Design")
+        self.assertEqual(task.duration, timedelta(days=5))
+
+    def test_task_valid_milestone_still_works(self):
+        text = textwrap.dedent("""\
+        project: Test
+        task 1.2 Design 0d
+        """)
+        project = self.parser.parse(text)
+        self.assertTrue(project.tasks["1.2"].is_milestone)
+
+    def test_task_summary_no_duration_still_works(self):
+        text = textwrap.dedent("""\
+        project: Test
+        task 1.2 Design
+        task 1.2.1 Subtask 5d
+        """)
+        project = self.parser.parse(text)
+        self.assertIsNone(project.tasks["1.2"].duration)
+        self.assertEqual(project.tasks["1.2.1"].duration, timedelta(days=5))
+
+    def test_task_trailing_bare_number_is_name(self):
+        # A bare trailing digit is ambiguous (duration attempt vs. name) and is
+        # treated as part of the task name, matching the scaling generator's
+        # use of names like "Group 1". A child makes it a summary task.
+        text = textwrap.dedent("""\
+        project: Test
+        task 1 Group 1
+        task 1.1 Subtask 5d
+        """)
+        project = self.parser.parse(text)
+        self.assertEqual(project.tasks["1"].name, "Group 1")
+        self.assertIsNone(project.tasks["1"].duration)
+        self.assertEqual(project.tasks["1.1"].duration, timedelta(days=5))
+
     def test_hierarchical_task_id(self):
         text = textwrap.dedent("""\
         project: Test

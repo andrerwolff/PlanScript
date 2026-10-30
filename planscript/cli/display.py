@@ -1,3 +1,6 @@
+import shutil
+import textwrap
+
 from decimal import Decimal, ROUND_HALF_UP
 
 from planscript.model.project import Project
@@ -7,61 +10,254 @@ CURRENCY = Decimal("0.01")
 GREEN = "\033[32m"
 RESET = "\033[0m"
 
-class Table:
-    def __init__(self, headers, rows):
-        self.headers = headers
-        self.rows = rows
-
-    def render(self):
-        pass
-    def print(self):
-        print(self.render())
-
 def print_table(headers, rows, summary_row=None):
-    widths = calculate_col_widths(headers, rows, summary_row)
-    table_width = sum(widths)+len(widths)+1
+    """
+    Print a formatted table.
 
-    print("-"*table_width)
+    Long cell values are wrapped to fit the available terminal width.
+    The original API is preserved.
+    """
+    terminal_width = shutil.get_terminal_size(fallback=(120, 24)).columns
+
+    widths = calculate_col_widths(
+        headers,
+        rows,
+        summary_row,
+        max_width=terminal_width
+    )
+
+    table_width = sum(widths) + len(widths) + 1
+
+    print("-" * table_width)
     print(format_row(headers, widths))
-    print("-"*table_width)
+    print("-" * table_width)
+
     for row in rows:
-        print(format_row(row, widths))
-    
-    if summary_row:
-        print("="*table_width)
-        print(format_row(summary_row, widths))
-        
-    print("-"*table_width)
+        for line in format_wrapped_row(row, widths):
+            print(line)
+
+    if summary_row is not None:
+        print("=" * table_width)
+        for line in format_wrapped_row(summary_row, widths):
+            print(line)
+
+    print("-" * table_width)
+
     return table_width
 
-def calculate_col_widths(headers, rows, summary_row):
+
+def calculate_col_widths(
+    headers,
+    rows,
+    summary_row=None,
+    max_width=None,
+    min_width=3,
+    depths=None,
+    indent_column=1,
+    indent=2
+):
+    """
+    Calculate column widths, including two characters of padding.
+
+    min_width: minimum content width, excluding padding.
+    max_width: maximum overall table width.
+    depths: optional hierarchy depths for each row.
+    indent_column: column receiving hierarchy indentation.
+    indent: spaces per hierarchy level.
+    """
     widths = []
+
+    max_depth = max(depths, default=0) if depths else 0
+
     for col in range(len(headers)):
-        width = len(str(headers[col]))+2
+        width = len(str(headers[col]))
 
         for row in rows:
-            width = max(width, len(str(row[col]))+2)
+            if col < len(row):
+                width = max(width, len(str(row[col])))
 
-        if summary_row is not None:
-            width = max(width, len(str(summary_row[col]))+2)
+        if summary_row is not None and col < len(summary_row):
+            width = max(width, len(str(summary_row[col])))
 
-        widths.append(width)
+        if col == indent_column:
+            width += max_depth * indent
+
+        widths.append(max(width, min_width) + 2)
+
+    if max_width is None:
+        return widths
+
+    available_width = max_width - len(widths) - 1
+
+    while sum(widths) > available_width:
+        largest = max(range(len(widths)), key=lambda i: widths[i])
+
+        if widths[largest] <= min_width + 2:
+            break
+
+        widths[largest] -= 1
+
     return widths
 
 def format_row(row, widths):
+    """Format a single, non-wrapped table row."""
     parts = []
 
     for value, width in zip(row, widths):
-        parts.append(f"{str(value):<{width}}")
+        parts.append(f" {str(value):<{width - 2}} ")
 
-    return "|"+"|".join(parts)+"|"
+    return "|" + "|".join(parts) + "|"
 
-def _format_currency(amount:Decimal | None) -> str:
+
+def format_wrapped_row(row, widths):
+    """
+    Format a row into one or more lines.
+
+    Each cell wraps independently. Shorter cells are padded
+    with blank lines to maintain table alignment.
+    """
+    wrapped_cells = []
+
+    for value, width in zip(row, widths):
+        content_width = max(1, width - 2)
+
+        wrapped = textwrap.wrap(
+            str(value),
+            width=content_width,
+            break_long_words=True,
+            break_on_hyphens=False
+        )
+
+        wrapped_cells.append(wrapped or [""])
+
+    if not wrapped_cells:
+        return ["||"]
+
+    line_count = max(len(cell) for cell in wrapped_cells)
+
+    lines = []
+
+    for line_number in range(line_count):
+        parts = []
+
+        for cell, width in zip(wrapped_cells, widths):
+            value = cell[line_number] if line_number < len(cell) else ""
+            parts.append(f" {value:<{width - 2}} ")
+
+        lines.append("|" + "|".join(parts) + "|")
+
+    return lines
+
+
+def format_row_with_indent(row, widths, column=1, depth=0, indent=2):
+    """Format a row with hierarchy indentation and wrapped text."""
+    cells = []
+
+    for index, (value, width) in enumerate(zip(row, widths)):
+        content_width = width - 2
+
+        if index == column:
+            prefix = " " * (depth * indent)
+
+            available_width = max(1, content_width - len(prefix))
+
+            wrapped = textwrap.wrap(
+                str(value),
+                width=available_width,
+                break_long_words=True,
+                break_on_hyphens=False
+            )
+
+            wrapped = wrapped or [""]
+            wrapped = [
+                prefix + line for line in wrapped
+            ]
+
+        else:
+            wrapped = textwrap.wrap(
+                str(value),
+                width=content_width,
+                break_long_words=True,
+                break_on_hyphens=False
+            )
+
+            wrapped = wrapped or [""]
+
+        cells.append(wrapped)
+
+    line_count = max(len(cell) for cell in cells)
+
+    lines = []
+
+    for line_number in range(line_count):
+        parts = []
+
+        for cell, width in zip(cells, widths):
+            value = cell[line_number] if line_number < len(cell) else ""
+            parts.append(f" {value:<{width - 2}} ")
+
+        lines.append("|" + "|".join(parts) + "|")
+
+    return lines
+
+def print_table_with_indents(
+    headers,
+    rows,
+    depths,
+    summary_row=None,
+    indent_column=1
+):
+    """
+    Print a table with hierarchy indentation on selected rows.
+
+    rows: list of table rows
+    depths: corresponding hierarchy depths
+    """
+    terminal_width = shutil.get_terminal_size(
+        fallback=(120, 24)
+    ).columns
+
+    widths = calculate_col_widths(
+        headers,
+        rows,
+        summary_row,
+        max_width=terminal_width,
+        depths=depths,
+        indent_column=indent_column
+    )
+
+    table_width = sum(widths) + len(widths) + 1
+
+    print("-" * table_width)
+    print(format_row(headers, widths))
+    print("-" * table_width)
+
+    for row, depth in zip(rows, depths):
+        for line in format_row_with_indent(
+            row,
+            widths,
+            column=indent_column,
+            depth=depth
+        ):
+            print(line)
+
+    if summary_row is not None:
+        print("=" * table_width)
+
+        for line in format_wrapped_row(summary_row, widths):
+            print(line)
+
+    print("-" * table_width)
+
+    return table_width
+
+def _format_currency(amount: Decimal | None) -> str:
     if amount is None or amount == Decimal("0"):
         return "-"
     amount = amount.quantize(CURRENCY, rounding=ROUND_HALF_UP)
-    if amount.is_signed() and not amount.is_zero():
-        return f"(${abs(amount):,})" # TODO add colors to tables, green good red bad
+    if amount < 0:
+        return f"(${abs(amount):,})"
+
     return f"${amount:,}"
     
 def display_task_with_dependencies(project, task):
@@ -178,55 +374,73 @@ def view_budget(project):
         print(f"    Unallocated: {', '.join(budget.unallocated)}")
     print()
 
-def view_cost_actuals(project:Project, as_of=None):
+def view_cost_actuals(project: Project, as_of=None):
     tracker = project.tracker
     budget = project.budget
-    analysis = Analyzer(project, as_of) 
+    analysis = Analyzer(project, as_of)
+
     tree = tracker.hierarchy.get_tree()
 
-    headers = ['ID','TASK','BUDGET', 'ACTUAL COST', 'COST VARIANCE']
-    rows = []
-    for task_id in tree:
-        task_name = project.tasks[task_id].name
-        
-        plan = budget.get(task_id)
-        tree_id = tree[task_id]
-        level = (len(tree_id) - len(tree_id.lstrip(' ')))*2
-        
-        plan_value = _format_currency(plan)
-        plan_value = f"{' '*level}" + plan_value
+    headers = [
+        'ID',
+        'TASK',
+        'BUDGET',
+        'ACTUAL COST',
+        'COST VARIANCE'
+    ]
 
-        cost_value = _format_currency(tracker.actual_cost(task_id, as_of))
-        cost_value = f"{' '*level}" + cost_value
+    rows_with_depth = []
 
-        variance_value = _format_currency(analysis.cost_variance(task_id))
-        variance_value = f"{' '*level}" + variance_value
+    for task_id, tree_id in tree.items():
+        task = project.tasks[task_id]
 
-        rows.append([tree[task_id], task_name, plan_value, cost_value, variance_value])
-    
-    total_cost_value = _format_currency(tracker.total_actual_cost(as_of))
+        depth = len(tree_id) - len(tree_id.lstrip(' '))
+
+        row = [
+            tree_id.strip(),
+            task.name,
+            _format_currency(budget.get(task_id)),
+            _format_currency(tracker.actual_cost(task_id, as_of)),
+            _format_currency(analysis.cost_variance(task_id))
+        ]
+
+        rows_with_depth.append((row, depth))
+
+    total_cost_value = _format_currency(
+        tracker.total_actual_cost(as_of)
+    )
     total_budget_value = _format_currency(budget.total)
-    total_variance_value = _format_currency(analysis.total_cost_variance())
-    
-    summary_row = ['','PROJECT TOTALS', total_budget_value, total_cost_value, total_variance_value]
-    print_table(headers, rows, summary_row)
+    total_variance_value = _format_currency(
+        analysis.total_cost_variance()
+    )
 
-def render_log(project):
+    summary_row = [
+        '',
+        'PROJECT TOTALS',
+        total_budget_value,
+        total_cost_value,
+        total_variance_value
+    ]
+
+    rows = []
+
+    depths = []
+
+    for row, depth in rows_with_depth:
+        adjusted_row = list(row)
+
+        adjusted_row[1] = (
+            " " * (depth * 2) + adjusted_row[1]
+        )
+
+        rows.append(adjusted_row)
+        depths.append(depth)
+
+    print_table_with_indents(
+        headers,
+        rows,
+        depths,
+        summary_row
+    )
+
     print()
-    print(f"    PROJECT: {project.name}")
-    print("-" * 50)
-    print("|| Begin Log ||")
-    print("-" * 25)
-    for event in project.tracker.get_all_task_events():
-        print(event)
-    print("-" * 25)
-    print("|| End Log ||")
-    print("-" * 50)
-    print(project.tracker.get_task_state("1.1"))
-    print(project.tracker.get_task_state("1.2"))
-    print(project.tracker.get_task_state("3.1"))
-    print(project.tracker.get_task_state("3.2"))
-    print(project.tracker.get_task_state("4.2.2"))
-    input("Press Enter to continue...")
-    return f"-"* 69
-    

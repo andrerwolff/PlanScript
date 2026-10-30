@@ -20,7 +20,7 @@ from planscript.model.constraint import Constraint, ConstraintType
 from planscript.model.task import Task
 from planscript.model.hierarchy import TaskHierarchy
 from planscript.model.budget import Budget
-from planscript.model.tracker import Tracker
+from planscript.model.tracker import EventDirective, Tracker
 from planscript.model.schedule import Schedule
 
 @dataclass
@@ -439,6 +439,27 @@ class Project:
 
     def _validate_tracker(self) -> None:
         """Validate that tracked task references still exist in the project."""
+
+        hierarchy = self.tracker.hierarchy
+        if hierarchy is not None:
+            for task_id in self.tasks:
+                if hierarchy.is_summary(task_id):
+                    non_note_events = [
+                        event
+                        for event in self.tracker.task_events
+                        if event.task_id == task_id
+                        and event.directive != EventDirective.NOTE
+                    ]
+                    if non_note_events:
+                        directives = ", ".join(
+                            f"'{event.directive.value}'" for event in non_note_events
+                        )
+                        raise ValidationError(
+                            f"Task '{task_id}' is a summary task; "
+                            f"tracking events ({directives}) are not allowed "
+                            f"on summary tasks. Track leaf tasks instead; "
+                            f"summary state is derived from descendants."
+                        )
 
         for task_id in self.tasks:
             self.tracker.get_task_state(task_id)

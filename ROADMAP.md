@@ -125,8 +125,12 @@ The tracking design is written; these rules are not yet enforced:
    `Tracker.add_task_event`. Same-day `note`s are allowed and combined into one
    event, separated by ` | `. Tested in `test_tracking.py` and documented in
    `SYNTAX.md`.
-4. **Tracking on summary tasks** — currently accepted silently. Decide: reject,
-   derive from leaves, or allow with rollup, then enforce and document.
+4. **Tracking on summary tasks** — [COMPLETED/DECIDED] `start`, `progress`, and
+   `complete` tracking events are rejected on summary tasks; summary state is
+   derived exclusively from its descendant leaf tasks (rollup). `note` events
+   are still allowed on summary tasks. Enforced in
+   `Project._validate_tracker`; documented in `SYNTAX.md`; tested in
+   `test_tracking.py`.
 5. **Date-only line with no entries** — [COMPLETED] the parser rejects a
    date-only tracking line followed by another date, a one-line event, or the
    end of the file (`Line N: tracking date has no entries`). Tested in

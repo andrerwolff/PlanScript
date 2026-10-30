@@ -93,6 +93,20 @@ class Parser:
         r"(?P<duration>[+-]\d+(?:\.\d+)?[hdwm]?)$"
     )
 
+    INVALID_TASK_DURATION_TOKEN_PATTERN = re.compile(
+        r"^task\s+"
+        r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
+        r"(?P<description>.+?)\s+"
+        r"(?P<token>\d+(?:\.\d+)?[a-zA-Z]+)$"
+    )
+
+    INVALID_TASK_DURATION_SPACE_PATTERN = re.compile(
+        r"^task\s+"
+        r"(?P<id>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)\s+"
+        r"(?P<description>.+?)\s+"
+        r"(?P<num>\d+(?:\.\d+)?)\s+(?P<unit>[hdw])\s*$"
+    )
+
     ATTACHED_DEPENDENCY_TYPE_PATTERN = re.compile(
         r"^(?: {4}|\t)depends\s+"
         r"(?P<predecessor>[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)(?P<type>FS|SS|FF|SF)"
@@ -214,6 +228,33 @@ class Parser:
             match = self.INVALID_TASK_DURATION_PATTERN.match(line)
             if match:
                 raise ParseError(f"Line {line_number}: task duration cannot be negative or signed '{match.group('duration')}')"
+                )
+
+            # Invalid task duration token (unknown unit, no unit, bare number)
+            match = self.INVALID_TASK_DURATION_TOKEN_PATTERN.match(line)
+            if match:
+                token = match.group("token")
+                if not re.fullmatch(r"\d+(?:\.\d+)?[hdw]", token):
+                    raise ParseError(
+                        f"Line {line_number}: invalid duration token '{token}'. "
+                        f"Duration must be a number followed by h, d, or w (e.g. 5d)."
+                    )
+                # Valid duration (e.g. 5d) — fall through to TASK_PATTERN.
+
+            # Duration with an embedded space (e.g. "5 d")
+            match = self.INVALID_TASK_DURATION_SPACE_PATTERN.match(line)
+            if match:
+                raise ParseError(
+                    f"Line {line_number}: duration '{match.group('num')} "
+                    f"{match.group('unit')}' has an embedded space; "
+                    f"write it as '{match.group('num')}{match.group('unit')}'"
+                )
+
+            # Inline comments are not supported
+            if line.startswith("task ") and ";" in line:
+                raise ParseError(
+                    f"Line {line_number}: inline comments are not supported. "
+                    f"Use a whole-line comment starting with ';' instead."
                 )
 
             # Task
@@ -409,8 +450,8 @@ class Parser:
 
         self.resolve_dependencies(project, pending_dependencies)
         self.resolve_constraints(project, pending_constraints)
-        project.validate()
         project.tracker.hierarchy = TaskHierarchy(project.tasks)
+        project.validate()
 
         return project
 

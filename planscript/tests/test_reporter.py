@@ -31,7 +31,9 @@ from planscript.engine.budgeter import Budgeter
 from planscript.engine.forecaster import Forecaster
 from planscript.engine.parser import Parser
 from planscript.engine.reporter import (NOT_AVAILABLE, ProjectStatus,
-                                        ReportBuilder, ScheduleCondition)
+                                        ReportBuilder, ReportSpec,
+                                        ReportView, ScheduleCondition,
+                                        TaskFilter, TaskView)
 from planscript.engine.scheduler import Scheduler
 from planscript.model.tracker import TaskStatus
 
@@ -683,6 +685,282 @@ class TestRenderedValues(unittest.TestCase):
 
         self.assertIn("Actual Cost: $0.00", budget)
         self.assertNotIn(f"Actual Cost: {NOT_AVAILABLE}", budget)
+
+
+class TestReportSpec(unittest.TestCase):
+    """ReportSpec defaults and custom values."""
+
+    def test_defaults(self):
+        spec = ReportSpec()
+
+        self.assertEqual(spec.basis, "both")
+        self.assertEqual(spec.scope, "task")
+        self.assertEqual(spec.filter, "all")
+        self.assertEqual(spec.renderer, "detail")
+        self.assertEqual(spec.as_of, date.today())
+        self.assertEqual(spec.look_ahead, timedelta(days=21))
+
+    def test_custom_values(self):
+        as_of = date(2026, 8, 1)
+        spec = ReportSpec(
+            basis="schedule",
+            scope="project",
+            filter="critical",
+            renderer="table",
+            as_of=as_of,
+            look_ahead=timedelta(days=7),
+        )
+
+        self.assertEqual(spec.basis, "schedule")
+        self.assertEqual(spec.scope, "project")
+        self.assertEqual(spec.filter, "critical")
+        self.assertEqual(spec.renderer, "table")
+        self.assertEqual(spec.as_of, as_of)
+        self.assertEqual(spec.look_ahead, timedelta(days=7))
+
+
+class TestTaskFilter(unittest.TestCase):
+    """TaskFilter returns the right subset of task views."""
+
+    def _view(self, task_id, condition=ScheduleCondition.ON_SCHEDULE,
+              total_float=None, started=False, budget=None,
+              planned_start=None):
+        """Build a TaskView with the given properties."""
+        return TaskView(
+            task_id=task_id,
+            name=f"Task {task_id}",
+            schedule_condition=condition,
+            total_float=total_float,
+            actual_start=date(2026, 8, 1) if started else None,
+            task_budget=budget,
+            planned_start=planned_start,
+        )
+
+    def test_all_tasks_returns_everything(self):
+        views = [
+            self._view("1.1", ScheduleCondition.ON_SCHEDULE),
+            self._view("1.2", ScheduleCondition.LATE),
+        ]
+        result = TaskFilter.all_tasks(views)
+
+        self.assertEqual(len(result), 2)
+        self.assertIs(result[0], views[0])
+        self.assertIs(result[1], views[1])
+
+    def test_critical_returns_zero_float_tasks(self):
+        views = [
+            self._view("1.1", total_float=timedelta(0)),
+            self._view("1.2", total_float=timedelta(days=3)),
+            self._view("1.3", total_float=None),
+        ]
+        result = TaskFilter.critical(views)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].task_id, "1.1")
+
+    def test_behind_returns_late_and_overdue(self):
+        views = [
+            self._view("1.1", ScheduleCondition.ON_SCHEDULE),
+            self._view("1.2", ScheduleCondition.LATE),
+            self._view("1.3", ScheduleCondition.OVERDUE),
+            self._view("1.4", ScheduleCondition.BLOCKED),
+        ]
+        result = TaskFilter.behind(views)
+
+        self.assertEqual(len(result), 2)
+        task_ids = {v.task_id for v in result}
+        self.assertEqual(task_ids, {"1.2", "1.3"})
+
+    def test_overdue_returns_only_overdue(self):
+        views = [
+            self._view("1.1", ScheduleCondition.OVERDUE),
+            self._view("1.2", ScheduleCondition.LATE),
+            self._view("1.3", ScheduleCondition.BLOCKED),
+        ]
+        result = TaskFilter.overdue(views)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].task_id, "1.1")
+
+    def test_blocked_returns_only_blocked(self):
+        views = [
+            self._view("1.1", ScheduleCondition.BLOCKED),
+            self._view("1.2", ScheduleCondition.LATE),
+            self._view("1.3", ScheduleCondition.OVERDUE),
+        ]
+        result = TaskFilter.blocked(views)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].task_id, "1.1")
+
+    def test_late_returns_only_late(self):
+        views = [
+            self._view("1.1", ScheduleCondition.LATE),
+            self._view("1.2", ScheduleCondition.OVERDUE),
+            self._view("1.3", ScheduleCondition.BLOCKED),
+        ]
+        result = TaskFilter.late(views)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].task_id, "1.1")
+
+    def test_upcoming_returns_unstarted_in_window(self):
+        as_of = date(2026, 8, 10)
+        look_ahead = timedelta(days=14)
+
+        views = [
+            self._view("1.1", started=True),
+            self._view("1.2", planned_start=date(2026, 8, 15)),
+            self._view("1.3", planned_start=date(2026, 8, 5)),
+            self._view("1.4", planned_start=date(2026, 9, 1)),
+            self._view("1.5"),
+        ]
+
+        result = TaskFilter.upcoming(views, as_of, look_ahead)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].task_id, "1.2")
+
+    def test_ready_to_start_returns_unstarted_non_blocked(self):
+        views = [
+            self._view("1.1", started=True),
+            self._view("1.2", ScheduleCondition.BLOCKED),
+            self._view("1.3", ScheduleCondition.ON_SCHEDULE),
+            self._view("1.4", ScheduleCondition.LATE),
+        ]
+        result = TaskFilter.ready_to_start(views)
+
+        self.assertEqual(len(result), 2)
+        task_ids = {v.task_id for v in result}
+        self.assertEqual(task_ids, {"1.3", "1.4"})
+
+    def test_charged_returns_tasks_with_budget(self):
+        views = [
+            self._view("1.1", budget=Decimal("1000")),
+            self._view("1.2", budget=None),
+            self._view("1.3", budget=Decimal("500")),
+        ]
+        result = TaskFilter.charged(views)
+
+        self.assertEqual(len(result), 2)
+        task_ids = {v.task_id for v in result}
+        self.assertEqual(task_ids, {"1.1", "1.3"})
+
+    def test_apply_routes_to_correct_filter(self):
+        views = [
+            self._view("1.1", ScheduleCondition.OVERDUE),
+            self._view("1.2", ScheduleCondition.LATE),
+        ]
+        spec = ReportSpec(filter="overdue")
+        result = TaskFilter.apply(views, spec)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].task_id, "1.1")
+
+    def test_apply_unknown_filter_raises(self):
+        views = [self._view("1.1")]
+        spec = ReportSpec(filter="does_not_exist")
+
+        with self.assertRaises(ValueError) as ctx:
+            TaskFilter.apply(views, spec)
+
+        self.assertIn("does_not_exist", str(ctx.exception))
+
+
+class TestReportView(unittest.TestCase):
+    """ReportView holds project and task data."""
+
+    def test_construction(self):
+        as_of = date(2026, 8, 20)
+        view = ReportView(
+            name="Test Project",
+            status=ProjectStatus.IN_PROGRESS,
+            as_of=as_of,
+            look_ahead=timedelta(days=14),
+        )
+
+        self.assertEqual(view.name, "Test Project")
+        self.assertEqual(view.status, ProjectStatus.IN_PROGRESS)
+        self.assertEqual(view.as_of, as_of)
+        self.assertEqual(view.look_ahead, timedelta(days=14))
+        self.assertEqual(view.task_views, [])
+        self.assertEqual(view.data_notices, [])
+
+    def test_task_views_can_be_added(self):
+        view = ReportView(
+            name="Test Project",
+            status=ProjectStatus.NOT_STARTED,
+            as_of=date(2026, 8, 1),
+            look_ahead=timedelta(days=21),
+        )
+
+        task = TaskView(task_id="1.1", name="Kickoff")
+        view.task_views.append(task)
+
+        self.assertEqual(len(view.task_views), 1)
+        self.assertEqual(view.task_views[0].task_id, "1.1")
+
+
+class TestTaskView(unittest.TestCase):
+    """TaskView holds per-task derived data."""
+
+    def test_defaults(self):
+        view = TaskView(task_id="1.1", name="Kickoff")
+
+        self.assertEqual(view.task_id, "1.1")
+        self.assertEqual(view.name, "Kickoff")
+        self.assertFalse(view.is_summary)
+        self.assertFalse(view.is_milestone)
+        self.assertEqual(view.schedule_condition, ScheduleCondition.ON_SCHEDULE)
+        self.assertIsNone(view.total_float)
+        self.assertIsNone(view.planned_start)
+        self.assertIsNone(view.planned_finish)
+        self.assertIsNone(view.task_budget)
+        self.assertIsNone(view.task_actual)
+        self.assertEqual(view.blocked_by, [])
+        self.assertEqual(view.root_causes, [])
+
+    def test_full_population(self):
+        view = TaskView(
+            task_id="1.2",
+            name="Build",
+            is_summary=False,
+            is_milestone=False,
+            schedule_condition=ScheduleCondition.LATE,
+            total_float=timedelta(days=2),
+            planned_start=date(2026, 8, 5),
+            planned_finish=date(2026, 8, 15),
+            planned_duration=timedelta(days=10),
+            actual_start=None,
+            actual_finish=None,
+            actual_duration=None,
+            forecast_start=date(2026, 8, 20),
+            forecast_finish=date(2026, 8, 30),
+            forecast_duration=timedelta(days=10),
+            finish_variance=timedelta(days=5),
+            forecast_variance=timedelta(days=10),
+            task_budget=Decimal("5000.00"),
+            task_actual=Decimal("2500.00"),
+            task_remaining=Decimal("2500.00"),
+            cost_variance=Decimal("-2500.00"),
+            planned_progress=0.5,
+            actual_progress=0.0,
+            budget_consumed=0.5,
+            days_late=timedelta(days=3),
+            blocked_by=["1.1 - Kickoff [Completed] (due 2026-08-04)"],
+            root_causes=["1.1 [On Schedule]"],
+        )
+
+        self.assertEqual(view.task_id, "1.2")
+        self.assertEqual(view.name, "Build")
+        self.assertEqual(view.schedule_condition, ScheduleCondition.LATE)
+        self.assertEqual(view.total_float, timedelta(days=2))
+        self.assertEqual(view.planned_start, date(2026, 8, 5))
+        self.assertEqual(view.task_budget, Decimal("5000.00"))
+        self.assertEqual(view.cost_variance, Decimal("-2500.00"))
+        self.assertEqual(view.blocked_by,
+                         ["1.1 - Kickoff [Completed] (due 2026-08-04)"])
+        self.assertEqual(view.root_causes, ["1.1 [On Schedule]"])
 
 
 if __name__ == "__main__":
