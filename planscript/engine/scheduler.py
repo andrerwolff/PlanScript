@@ -197,7 +197,7 @@ class Scheduler:
             if pinned_es is None:
                 if candidate_es > pin:
                     raise SchedulingError(
-                        f"Task '{task.number}' violates mandatory {boundary} constraint.")
+                        f"Task '{task.number}' violates mandatory {boundary} constraint.pinned_es")
                 pinned_es = pin
             elif pinned_es != pin:
                 raise SchedulingError(

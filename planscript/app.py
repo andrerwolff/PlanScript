@@ -8,7 +8,7 @@ from planscript.exceptions import ParseError, SchedulingError, ValidationError, 
 from planscript.cli import display
 from planscript.engine.budgeter import Budgeter
 from planscript.engine.scheduler import Scheduler
-from planscript.engine.reporter import ReportBuilder
+from planscript.engine.reporter import ReportBuilder, ReportSpec, ReportRenderer
 from planscript.engine.parser import Parser
 from planscript.cli.gantt import render_gantt
 
@@ -113,8 +113,9 @@ def status_command(file_path:Path, as_of:date, look_ahead:int) -> int:
     project = load_project(file_path)
     project.schedule = Scheduler().calculate(project)
     project.budget = Budgeter().calculate(project)
-    report = ReportBuilder(project, as_of, timedelta(days=look_ahead)).build()
-    print(report.render_text())
+    spec = ReportSpec()
+    report = ReportBuilder(project, spec).build_view()
+    print(ReportRenderer().render(report))
 
     return 0
     

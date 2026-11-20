@@ -41,7 +41,6 @@ def _whole_days(value: timedelta) -> float:
 
     return value.total_seconds() / 86400
 
-
 def _format_money(amount: Decimal | None) -> str:
     """Format an amount of money, keeping zero distinct from unknown.
 
@@ -57,14 +56,12 @@ def _format_money(amount: Decimal | None) -> str:
         return f"(${abs(amount):,})"
     return f"${amount:,}"
 
-
 def _format_percent(value: float | None) -> str:
     """Format a 0..1 fraction, keeping zero distinct from unknown."""
 
     if value is None:
         return NOT_AVAILABLE
     return f"{value:.1%}"
-
 
 def _format_days(value: timedelta | None) -> str:
     """Format a variance as signed whole days, such as '+5d', '-4d', or '0d'."""
@@ -79,7 +76,6 @@ def _format_days(value: timedelta | None) -> str:
         return f"{int(days):+d}d"
     return f"{days:+g}d"
 
-
 def _format_duration(value: timedelta | None) -> str:
     """Format a duration in days, such as '5d' or '1.5d'."""
 
@@ -90,6 +86,14 @@ def _format_duration(value: timedelta | None) -> str:
     if days == int(days):
         return f"{int(days)}d"
     return f"{days:g}d"
+
+def _format_date(value: date | None) -> str:
+    """Format a date, keeping an unknown date distinct from any real date."""
+
+    if value is None:
+        return NOT_AVAILABLE
+    return f"{value}"
+
 
 class ProjectStatus(Enum):
     """Derived status of a project based on its tasks."""
@@ -114,12 +118,6 @@ class BudgetCondition(Enum):
     AT_RISK = "At Risk"
     NOT_TRACKED = "Not Tracked"
 
-def _format_date(value: date | None) -> str:
-    """Format a date, keeping an unknown date distinct from any real date."""
-
-    if value is None:
-        return NOT_AVAILABLE
-    return f"{value}"
 
 @dataclass
 class ProjectScheduleReport:
@@ -406,6 +404,579 @@ class ProjectReport:
             text += (f"    {t_report.task_id} - ${t_report.cost_variance}\n")"""
         return text
 
+# NEW IMPLEMENTATIONS _________________________________________________________________________________________________
+
+
+
+@dataclass
+class TaskView:
+    """Derived data for one task at a report's data date.
+
+    TaskView is plain data with no rendering logic. Renderers consume
+    TaskView instances to produce console tables, text blocks, or other
+    output formats.
+
+    Attributes:
+        task_id: The task's PlanScript identifier.
+        name: The task's human-readable name.
+        depth: the hierarchy level of the task.
+        is_summary: True when the task has child tasks.
+        is_milestone: True when the task has zero planned duration.
+        schedule_condition: The task's derived schedule condition.
+        total_float: The task's total float from CPM, or None.
+        planned_start: The task's planned start date.
+        planned_finish: The task's planned finish date.
+        planned_duration: The task's planned duration.
+        actual_start: The task's actual start date, or None.
+        actual_finish: The task's actual finish date, or None.
+        actual_duration: The task's actual duration, or None.
+        forecast_start: The task's forecast start date, or None.
+        forecast_finish: The task's forecast finish date, or None.
+        forecast_duration: The task's forecast remaining duration, or None.
+        finish_variance: Actual finish minus planned finish, or None.
+        forecast_variance: Forecast finish minus planned finish, or None.
+        task_budget: The task's planned budget, or None.
+        task_actual: The task's actual cost to as_of, or None.
+        task_remaining: Budget minus actual, or None.
+        cost_variance: Actual minus budget, or None.
+        planned_progress: Planned progress as a 0..1 fraction, or None.
+        actual_progress: Actual progress as a 0..1 fraction, or None.
+        budget_consumed: Share of budget spent, or None.
+        days_overdue: Days past planned finish, or None.
+        days_late: Days past planned start, or None.
+        days_waiting: Days waiting on predecessors, or None.
+        blocked_by: Descriptions of incomplete predecessors.
+        root_causes: Terminal blockers resolved from the dependency chain.
+    """
+
+    task_id: str
+    name: str
+    depth: int =0
+    is_summary: bool = False
+    is_milestone: bool = False
+
+    schedule_condition: ScheduleCondition = ScheduleCondition.ON_SCHEDULE
+    total_float: timedelta | None = None
+
+    planned_start: date | None = None
+    planned_finish: date | None = None
+    planned_duration: timedelta | None = None
+
+    actual_start: date | None = None
+    actual_finish: date | None = None
+    actual_duration: timedelta | None = None
+
+    forecast_start: date | None = None
+    forecast_finish: date | None = None
+    forecast_duration: timedelta | None = None
+
+    finish_variance: timedelta | None = None
+    forecast_variance: timedelta | None = None
+
+    task_budget: Decimal | None = None
+    task_actual: Decimal | None = None
+    task_remaining: Decimal | None = None
+    cost_variance: Decimal | None = None
+
+    planned_progress: float | None = None
+    actual_progress: float | None = None
+    budget_consumed: float | None = None
+
+    days_overdue: timedelta | None = None
+    days_late: timedelta | None = None
+    days_waiting: timedelta | None = None
+    blocked_by: list[str] = field(default_factory=list)
+    root_causes: list[str] = field(default_factory=list)
+
+@dataclass
+class TaskBuilder:
+    """Build TaskView objects from a project's derived data.
+
+    Leaf tasks are populated from Schedule, Tracker, Analyzer, and
+    Forecaster. Summary tasks are rolled up from their leaf descendants.
+
+    This class does not filter, render, or modify project data.
+    """
+
+    project: Project
+    analysis: Analyzer
+    forecast: Schedule
+    as_of: date
+
+    def build (self) -> list[TaskView]:
+        """Build all task views in hierarchy display order."""
+        hierarchy = self.project.schedule.hierarchy
+        views_by_id: dict[str, TaskView] = {}
+
+        # Build leaves before parents so summary tasks can roll up their already-built descendants.
+        for task_id in hierarchy.get_bottom_up_order():
+            if hierarchy.is_summary(task_id):
+                view = self._build_summary_view(task_id, views_by_id)
+            else:
+                view = self._build_leaf_view(task_id)
+
+            views_by_id[task_id] = view
+
+        # Return the views in parent-before-child display order.
+        views = []
+        for task_id in hierarchy.get_top_down_order():
+            views.append(views_by_id[task_id])
+        return views
+
+    def _build_leaf_view(self, task_id: str) -> TaskView:
+        """Build a TaskView directly from the derived data sources."""
+
+        task = self.project.tasks[task_id]
+        schedule = self.project.schedule
+        tracker = self.project.tracker
+        budget = self.project.budget
+
+        state = tracker.get_task_state(task_id, self.as_of)
+        condition = self._schedule_condition(task_id, state)
+
+        planned_start = schedule.start_dates[task_id]
+        planned_finish = schedule.finish_dates[task_id]
+        forecast_finish = self.forecast.finish_dates[task_id]
+
+        # CPM durations are offsets. Calendar dates are inclusive, so
+        # use the CPM values rather than subtracting the displayed dates.
+        forecast_duration = (self.forecast.early_finish[task_id] 
+                             - self.forecast.early_start[task_id])
+
+        task_budget = budget.get(task_id)
+        task_actual = tracker.actual_cost(task_id, self.as_of)
+
+        task_remaining = None
+        cost_variance = None
+        if task_budget is not None and task_actual is not None:
+            task_remaining = task_budget - task_actual
+            cost_variance = task_actual - task_budget
+
+        days_overdue = None
+        days_late = None
+        days_waiting = None
+        blocked_by = []
+        root_causes = []
+
+        if condition is ScheduleCondition.OVERDUE:
+            days_overdue = self.as_of - planned_finish
+
+        elif condition is ScheduleCondition.LATE:
+            days_late = self.as_of - planned_start
+
+        elif condition is ScheduleCondition.BLOCKED:
+            days_waiting = self.as_of - planned_start
+            blocked_by = self._describe_blockers(task_id)
+            root_causes = self._root_causes(task_id)
+
+        return TaskView(
+            task_id=task_id,
+            name=task.name,
+            depth=len(schedule.hierarchy.get_ancestors(task_id)),
+            is_summary=False,
+            is_milestone=(task.duration == timedelta(0)),
+
+            schedule_condition=condition,
+            total_float=schedule.total_float.get(task_id),
+
+            planned_start=planned_start,
+            planned_finish=planned_finish,
+            planned_duration=task.duration,
+
+            actual_start=tracker.actual_start(task_id, self.as_of),
+            actual_finish=tracker.actual_finish(task_id, self.as_of),
+            actual_duration=tracker.actual_duration(task_id, self.as_of),
+
+            forecast_start=self.forecast.start_dates[task_id],
+            forecast_finish=forecast_finish,
+            forecast_duration=forecast_duration,
+
+            finish_variance=self.analysis.finish_variance(task_id),
+            forecast_variance=forecast_finish - planned_finish,
+
+            task_budget=budget.get(task_id),
+            task_actual=task_actual,
+            task_remaining=task_remaining,
+            cost_variance=cost_variance,
+
+            planned_progress=self.analysis.planned_progress(task_id),
+            actual_progress=self.analysis.actual_progress(task_id),
+            budget_consumed=self._task_budget_consumed(task_id),
+
+            days_overdue=days_overdue,
+            days_late=days_late,
+            days_waiting=days_waiting,
+            blocked_by=blocked_by,
+            root_causes=root_causes,
+        )
+
+    def _build_summary_view( self, task_id: str, views_by_id: dict[str, TaskView]) -> TaskView:
+        """Build a summary TaskView by rolling up its leaf descendants."""
+
+        hierarchy = self.project.schedule.hierarchy
+        task = self.project.tasks[task_id]
+
+        leaf_ids = hierarchy.get_leaves(task_id)
+        leaves = [views_by_id[leaf_id] for leaf_id in leaf_ids]
+
+        if not leaves:
+            raise ValueError(f"Summary task '{task_id}' has no leaf descendants.")
+
+        planned_starts = []
+        planned_finishes = []
+        actual_starts = []
+        actual_finishes = []
+        forecast_starts = []
+        forecast_finishes = []
+        task_budgets = []
+        task_actuals = []
+        overdues = []
+        lates = []
+        waitings = []
+        for view in leaves:
+            planned_starts.append(view.planned_start)
+            planned_finishes.append(view.planned_finish)
+            actual_starts.append(view.actual_start)
+            forecast_starts.append(view.forecast_start)
+            forecast_finishes.append(view.forecast_finish)
+            task_budgets.append(view.task_budget)
+            task_actuals.append(view.task_actual)
+            overdues.append(view.days_overdue)
+            lates.append(view.days_late)
+            waitings.append(view.days_waiting)
+
+        planned_start = self._earliest(planned_starts)
+        planned_finish = self._latest(planned_finishes)
+        actual_start = self._earliest(actual_starts)
+        forecast_start = self._earliest(forecast_starts)
+        forecast_finish = self._latest(forecast_finishes)
+        task_budget = self._sum_known(task_budgets)
+        task_actual = self._sum_known(task_actuals)
+        days_overdue = self._latest(overdues)
+        days_late = self._latest(lates)
+        days_waiting = self._latest(waitings)
+
+        all_completed = True
+        for view in leaves:
+            if view.actual_finish is None:
+                all_completed = False
+                break
+            else:
+                continue
+
+        if all_completed:
+            for view in leaves:
+                actual_finishes.append(view.actual_finish)
+            actual_finish = self.latest(actual_finishes)
+        else:
+            actual_finish = None
+
+        actual_duration = None
+        if actual_start is not None:
+            if all_completed:
+                actual_end = actual_finish
+            else:
+                actual_end = self.as_of
+            actual_duration = actual_end - actual_start
+
+
+        planned_duration = self._date_span(planned_start, planned_finish)
+        forecast_duration = self._date_span(forecast_start, forecast_finish)
+
+        task_remaining = None
+        cost_variance = None
+        if task_budget is not None and task_actual is not None:
+            task_remaining = task_budget - task_actual
+            cost_variance = task_actual - task_budget
+
+        budget_consumed = None
+        if task_budget is not None and task_budget != 0:
+            budget_consumed = float(task_actual / task_budget)
+
+        planned_progress = self._weighted_progress(leaves, "planned_progress")
+        actual_progress = self._weighted_progress(leaves, "actual_progress")
+
+        condition = self._summary_schedule_condition(leaves)
+
+        finish_variance = None
+        if actual_finish is not None and planned_finish is not None:
+            finish_variance = actual_finish - planned_finish
+
+        forecast_variance = None
+        if forecast_finish is not None and planned_finish is not None:
+            forecast_variance = forecast_finish - planned_finish
+
+        blocked_by = sorted({
+            blocker
+            for view in leaves
+            for blocker in view.blocked_by
+        })
+        root_causes = sorted({
+            cause
+            for view in leaves
+            for cause in view.root_causes
+        })
+
+        return TaskView(
+            task_id=task_id,
+            name=task.name,
+            depth=len(hierarchy.get_ancestors(task_id)),
+            is_summary=True,
+            is_milestone=False,
+
+            schedule_condition=condition,
+            total_float=None,
+
+            planned_start=planned_start,
+            planned_finish=planned_finish,
+            planned_duration=planned_duration,
+
+            actual_start=actual_start,
+            actual_finish=actual_finish,
+            actual_duration=actual_duration,
+
+            forecast_start=forecast_start,
+            forecast_finish=forecast_finish,
+            forecast_duration=forecast_duration,
+
+            finish_variance=finish_variance,
+            forecast_variance=forecast_variance,
+
+            task_budget=task_budget,
+            task_actual=task_actual,
+            task_remaining=task_remaining,
+            cost_variance=cost_variance,
+
+            planned_progress=planned_progress,
+            actual_progress=actual_progress,
+            budget_consumed=budget_consumed,
+
+            days_overdue=days_overdue,
+            days_late=days_late,
+            days_waiting=days_waiting,
+            blocked_by=blocked_by,
+            root_causes=root_causes,
+        )
+
+    def _schedule_condition(self, task_id: str, state: TaskState) -> ScheduleCondition:
+        """Classify a leaf task's schedule condition."""
+
+        start = self.project.schedule.start_dates[task_id]
+        finish = self.project.schedule.finish_dates[task_id]
+
+        if state.status is TaskStatus.COMPLETED:
+            return ScheduleCondition.ON_SCHEDULE
+
+        if self.as_of > start and state.status is TaskStatus.NOT_STARTED:
+            if self._has_incomplete_predecessors(task_id):
+                return ScheduleCondition.BLOCKED
+            return ScheduleCondition.LATE
+
+        if self.as_of > finish:
+            return ScheduleCondition.OVERDUE
+
+        return ScheduleCondition.ON_SCHEDULE
+
+    def _summary_schedule_condition(
+        self,
+        leaves: list[TaskView],
+    ) -> ScheduleCondition:
+        """Classify a summary based on its unfinished leaf descendants.
+
+        Priority:
+        1. Overdue if any unfinished descendant is overdue.
+        2. Late if any unfinished descendant is late.
+        3. Blocked if every unfinished descendant is blocked.
+        4. Otherwise on schedule.
+        """
+        unfinished = []
+        for view in leaves:
+            if view.actual_finish is None:
+                unfinished.append(view)
+
+        if not unfinished:
+            return ScheduleCondition.ON_SCHEDULE
+
+        conditions = set()
+        for view in unfinished:
+            conditions.add(view.schedule_condition)
+
+        if ScheduleCondition.OVERDUE in conditions:
+            return ScheduleCondition.OVERDUE
+
+        if ScheduleCondition.LATE in conditions:
+            return ScheduleCondition.LATE
+
+        if conditions == {ScheduleCondition.BLOCKED}:
+            return ScheduleCondition.BLOCKED
+
+        return ScheduleCondition.ON_SCHEDULE
+
+    def _has_incomplete_predecessors(self, task_id: str) -> bool:
+        return bool(self._incomplete_predecessors(task_id))
+
+    def _incomplete_predecessors(self, task_id: str):
+        """Return predecessors not complete at the report data date."""
+
+        task = self.project.tasks[task_id]
+        incomplete = []
+
+        for predecessor in self.project.get_predecessors(task):
+            state = self.project.tracker.get_task_state(predecessor.number, self.as_of)
+            if state.status is not TaskStatus.COMPLETED:
+                incomplete.append(predecessor)
+
+        return incomplete
+
+    def _describe_blockers(self, task_id: str) -> list[str]:
+        """Describe incomplete predecessors of a blocked task."""
+
+        descriptions = []
+
+        for predecessor in self._incomplete_predecessors(task_id):
+            state = self.project.tracker.get_task_state(predecessor.number, self.as_of)
+            due = self.project.schedule.finish_dates[predecessor.number]
+
+            description = (
+                f"{predecessor.number} - {predecessor.name} "
+                f"[{state.status.value}] (due {due}"
+            )
+
+            if self.as_of > due:
+                description += f", {(self.as_of - due).days}d overdue"
+
+            descriptions.append(description + ")")
+
+        return descriptions
+
+    def _root_causes(self, task_id: str) -> list[str]:
+        """Resolve a blocked task's dependency chain to terminal blockers."""
+
+        roots = {}
+        visited = set()
+        pending = self._incomplete_predecessors(task_id)
+
+        while pending:
+            predecessor = pending.pop()
+
+            if predecessor.number in visited:
+                continue
+
+            visited.add(predecessor.number)
+            blockers = self._incomplete_predecessors(predecessor.number)
+
+            if blockers:
+                pending.extend(blockers)
+            else:
+                state = self.project.tracker.get_task_state(predecessor.number, self.as_of)
+                condition = self._schedule_condition(predecessor.number, state)
+                roots[predecessor.number] = (f"{predecessor.number} [{condition.value}]")
+
+        return sorted(roots.values())
+
+    def _task_budget_consumed(self, task_id: str) -> float | None:
+        """Return actual cost divided by planned budget."""
+
+        budget = self.project.budget.get(task_id)
+
+        if budget is None or budget == 0:
+            return None
+
+        actual = self.project.tracker.actual_cost(task_id, self.as_of)
+
+        if actual is None:
+            return None
+
+        return float(actual / budget)
+
+    @staticmethod
+    def _earliest(values):
+        known = [value for value in values if value is not None]
+        return min(known) if known else None
+
+    @staticmethod
+    def _latest(values):
+        known = [value for value in values if value is not None]
+        return max(known) if known else None
+
+    @staticmethod
+    def _date_span(start: date | None, finish: date | None) -> timedelta | None:
+        if start is None or finish is None:
+            return None
+        return finish - start
+
+    @staticmethod
+    def _sum_known(values) -> Decimal | None:
+        known = [value for value in values if value is not None]
+        if not known:
+            return None
+        return sum(known, Decimal("0"))
+
+    @staticmethod
+    def _weighted_progress(leaves: list[TaskView], attribute: str) -> float | None:
+        """Calculate progress weighted by planned task duration."""
+
+        weighted_total = 0.0
+        total_weight = 0.0
+
+        for view in leaves:
+            progress = getattr(view, attribute)
+            duration = view.planned_duration
+
+            if progress is None or duration is None:
+                continue
+
+            weight = duration.total_seconds()
+            if weight <= 0:
+                continue
+
+            weighted_total += progress * weight
+            total_weight += weight
+
+        if total_weight == 0:
+            return None
+
+        return weighted_total / total_weight
+
+@dataclass
+class ReportSpec:
+    """Specification for what a report should contain.
+
+    A ReportSpec defines the axes of a report independent of how it is
+    rendered. Templates are preset ReportSpec instances so a user does
+    not need to assemble filters manually.
+
+    Attributes:
+        basis: Which derived data to compute. "schedule" computes CPM
+            schedule figures only. "finance" computes budget and actual
+            cost figures only. "both" computes schedule, budget, and
+            progress figures.
+        scope: Level of granularity. "project" rolls up to project-level
+            figures only. "task" lists every task. "summary" groups
+            tasks under their summary parents.
+        filter: Which tasks to include. "all" includes every task.
+            "critical" includes only tasks on the critical path.
+            "behind" includes tasks that are late or overdue.
+            "overdue" includes tasks that have passed their planned
+            finish. "blocked" includes tasks waiting on incomplete
+            predecessors. "late" includes unstarted tasks whose planned
+            start has passed. "upcoming" includes tasks starting or
+            finishing within look_ahead. "ready_to_start" includes
+            unstarted tasks whose predecessors are complete.
+        renderer: Output format. "detail" renders each task as a block
+            of text. "table" renders tasks as rows in a compact table.
+        as_of: The data date for the report. Defaults to today.
+        look_ahead: Number of days to look ahead for upcoming tasks.
+            Defaults to 21 days.
+    """
+
+    basis: str = "both"
+    scope: str = "task"
+    filter: str = "all"
+    renderer: str = "detail"
+    as_of: date = field(default_factory=date.today)
+    look_ahead: timedelta = timedelta(days=21)
+
 @dataclass
 class ReportBuilder:
     """Build a ProjectReport at a single data date.
@@ -417,34 +988,6 @@ class ReportBuilder:
     project: Project
     as_of: date = field(default_factory=date.today)
     look_ahead: timedelta = timedelta(days=21)
-    
-
-    def build(self) -> ProjectReport:
-        if self.project.schedule.start_dates is None:
-            raise SchedulingError(
-                "No project start date is available for date projection."
-            )
-        analysis = Analyzer(self.project, self.as_of)
-        forecast = Forecaster().forecast(project=self.project, as_of=self.as_of)
-        summary = self._task_summary(analysis, forecast, self.as_of, self.look_ahead)
-
-
-        return ProjectReport(
-            name=self.project.name,
-            status=self._project_status(),
-            as_of=self.as_of,
-            schedule_report=self._project_schedule_report(analysis, forecast),
-            budget_report=self._project_budget_report(analysis),
-            progress_report=self._project_progress_report(analysis),
-            all_tasks=summary["all"],
-            data_notices=self._data_notices()
-        )
-            #blocked_tasks=summary["blocked"],
-            #late_tasks=summary["lates"],
-            #upcoming_deadlines=summary["deadlines"],
-            #upcoming_starts=summary["starts"],
-            #charged_tasks=summary["charged"],
-            #look_ahead=self.look_ahead
 
     def _data_notices(self) -> list[str]:
         """Describe tracking data the report's data date excluded.
@@ -469,77 +1012,6 @@ class ReportBuilder:
                 f"as-of date ({self.as_of}), latest {latest}; not included.")
         return notices
 
-    def _task_summary(self, analysis, forecast: Schedule, as_of: date, look_ahead: timedelta):
-        # Kept for backward compatibility: wraps TaskBuilder and returns the
-        # same dict format used by tests as of ReportBuilder version 0.1.
-        task_builder = TaskBuilder(self.project, as_of, look_ahead)
-        all_views, deviations = task_builder.build()
-        return {
-            "all": all_views,
-            "overdues": deviations["overdues"],
-            "blocked": deviations["blocked"],
-            "lates": deviations["lates"],
-            "deadlines": deviations["deadlines"],
-            "starts": deviations["starts"],
-            "charged": deviations["charged"],
-        }
-
-    def _task_report(self, analysis, forecast: Schedule, task_id, state, as_of):
-        # Kept for backward compatibility: wraps TaskBuilder and exposes the
-        # legacy TaskReport shape (with nested schedule/budget/progress
-        # reports) for consumers that have not been updated to TaskView.
-        task_view = TaskBuilder(self.project, as_of, self.look_ahead)._build_leaf_view(task_id, as_of)
-        return TaskReport(
-            task_id=task_view.task_id,
-            name=task_view.name,
-            schedule_report=self._task_schedule_report(task_view),
-            budget_report=self._task_budget_report(task_view),
-            progress_report=self._task_progress_report(task_view),
-        )
-
-    def _project_schedule_report(self, analysis: Analyzer, forecast: Schedule) -> ProjectScheduleReport:
-        return ProjectScheduleReport(
-            planned_start=self.project.schedule.start_dates[self.project.name],
-            planned_finish=self.project.schedule.finish_dates[self.project.name],
-            planned_duration=self.project.schedule.duration[self.project.name],
-            actual_start=analysis.actual_start(),
-            forecast_finish=self.project.schedule.forecast_finish(),
-            schedule_variance=self.project.schedule.schedule_variance(),
-        )
-
-    def _project_budget_report(self, analysis: Analyzer) -> ProjectBudgetReport:
-        return ProjectBudgetReport(
-            project_budget=self.project.budget.total,
-            project_actual=analysis.total_actual(),
-        )
-
-    def _project_progress_report(self, analysis: Analyzer) -> ProjectProgressReport:
-        return ProjectProgressReport(
-            planned_progress=analysis.planned_progress(),
-            actual_progress=analysis.actual_progress(),
-            budget_consumed=analysis.budget_consumed(),
-        )
-
-    def build(self) -> ProjectReport:
-        if self.project.schedule.start_dates is None:
-            raise SchedulingError(
-                "No project start date is available for date projection."
-            )
-        analysis = Analyzer(self.project, self.as_of)
-        forecast = Forecaster().forecast(project=self.project, as_of=self.as_of)
-        summary = self._task_summary(analysis, forecast, self.as_of, self.look_ahead)
-
-        return ProjectReport(
-            name=self.project.name,
-            status=self._project_status(),
-            as_of=self.as_of,
-            schedule_report=self._project_schedule_report(analysis, forecast),
-            budget_report=self._project_budget_report(analysis),
-            progress_report=self._project_progress_report(analysis),
-            all_tasks=summary["all"],
-            data_notices=self._data_notices(),
-        )
-
     def build_view(self) -> "ReportView":
         """Build a ReportView from the same derivation logic as build().
 
@@ -554,12 +1026,12 @@ class ReportBuilder:
         """
         analysis = Analyzer(self.project, self.as_of)
         forecast = Forecaster().forecast(project=self.project, as_of=self.as_of)
-        task_builder = TaskBuilder(self.project, self.as_of, self.look_ahead)
+        task_builder = TaskBuilder(project=self.project, analysis=analysis, forecast=forecast, as_of=self.as_of)
 
         # Task-level data
         task_views = task_builder.build()
-        filter_spec = ReportSpec(filter=self.filter)
-        filtered_views = TaskFilter.apply(task_views, filter_spec)
+        spec = ReportSpec(as_of=self.as_of, look_ahead=self.look_ahead)
+        filtered_views = TaskFilter.apply(task_views, spec)
 
         # Project-level figures
         schedule_report = self._project_schedule_report(analysis, forecast)
@@ -881,55 +1353,37 @@ class ReportBuilder:
 
         return sorted(roots.values())
 
-
-
-
-
-
-
-    
-
-
-
 @dataclass
-class ReportSpec:
-    """Specification for what a report should contain.
+class ReportView:
+    """Derived data for a project report at a single data date.
 
-    A ReportSpec defines the axes of a report independent of how it is
-    rendered. Templates are preset ReportSpec instances so a user does
-    not need to assemble filters manually.
+    ReportView is plain data with no rendering logic. It is the result
+    of building a ReportSpec against a Project. Renderers consume
+    ReportView instances to produce output.
 
     Attributes:
-        basis: Which derived data to compute. "schedule" computes CPM
-            schedule figures only. "finance" computes budget and actual
-            cost figures only. "both" computes schedule, budget, and
-            progress figures.
-        scope: Level of granularity. "project" rolls up to project-level
-            figures only. "task" lists every task. "summary" groups
-            tasks under their summary parents.
-        filter: Which tasks to include. "all" includes every task.
-            "critical" includes only tasks on the critical path.
-            "behind" includes tasks that are late or overdue.
-            "overdue" includes tasks that have passed their planned
-            finish. "blocked" includes tasks waiting on incomplete
-            predecessors. "late" includes unstarted tasks whose planned
-            start has passed. "upcoming" includes tasks starting or
-            finishing within look_ahead. "ready_to_start" includes
-            unstarted tasks whose predecessors are complete.
-        renderer: Output format. "detail" renders each task as a block
-            of text. "table" renders tasks as rows in a compact table.
-        as_of: The data date for the report. Defaults to today.
-        look_ahead: Number of days to look ahead for upcoming tasks.
-            Defaults to 21 days.
+        name: The project name.
+        status: The project's derived status.
+        as_of: The data date for the report.
+        look_ahead: The look-ahead window used for upcoming filters.
+        schedule_report: Project-level schedule figures, or None.
+        budget_report: Project-level budget figures, or None.
+        progress_report: Project-level progress figures, or None.
+        task_views: Filtered list of task views.
+        data_notices: Tracking data excluded by the data date.
     """
 
-    basis: str = "both"
-    scope: str = "task"
-    filter: str = "all"
-    renderer: str = "detail"
-    as_of: date = field(default_factory=date.today)
-    look_ahead: timedelta = timedelta(days=21)
+    name: str
+    status: ProjectStatus
+    as_of: date
+    look_ahead: timedelta
 
+    schedule_report: ProjectScheduleReport | None = None
+    budget_report: ProjectBudgetReport | None = None
+    progress_report: ProjectProgressReport | None = None
+
+    task_views: list[TaskView] = field(default_factory=list)
+    data_notices: list[str] = field(default_factory=list)
 
 @dataclass
 class TaskView:
@@ -1010,40 +1464,6 @@ class TaskView:
     days_waiting: timedelta | None = None
     blocked_by: list[str] = field(default_factory=list)
     root_causes: list[str] = field(default_factory=list)
-
-
-@dataclass
-class ReportView:
-    """Derived data for a project report at a single data date.
-
-    ReportView is plain data with no rendering logic. It is the result
-    of building a ReportSpec against a Project. Renderers consume
-    ReportView instances to produce output.
-
-    Attributes:
-        name: The project name.
-        status: The project's derived status.
-        as_of: The data date for the report.
-        look_ahead: The look-ahead window used for upcoming filters.
-        schedule_report: Project-level schedule figures, or None.
-        budget_report: Project-level budget figures, or None.
-        progress_report: Project-level progress figures, or None.
-        task_views: Filtered list of task views.
-        data_notices: Tracking data excluded by the data date.
-    """
-
-    name: str
-    status: ProjectStatus
-    as_of: date
-    look_ahead: timedelta
-
-    schedule_report: ProjectScheduleReport | None = None
-    budget_report: ProjectBudgetReport | None = None
-    progress_report: ProjectProgressReport | None = None
-
-    task_views: list[TaskView] = field(default_factory=list)
-    data_notices: list[str] = field(default_factory=list)
-
 
 class TaskFilter:
     """Filter a list of TaskView instances by common report criteria.
@@ -1206,3 +1626,33 @@ class TaskFilter:
         if filter_name == "charged":
             return TaskFilter.charged(views)
         raise ValueError(f"Unknown report filter: {filter_name}")
+
+class ReportRenderer:
+    """Render a ReportView without calculating or modifying report data."""
+
+    def render(self, report: ReportView, spec: ReportSpec) -> None:
+        """Render a report using the renderer specified by ReportSpec."""
+
+        if spec.renderer == "detail":
+            self.render_detail(report, spec)
+        elif spec.renderer == "table":
+            self.render_table(report, spec)
+        else:
+            raise ValueError(f"Unknown report renderer: {spec.renderer}")
+    
+    def _render_header(self, report: ReportView) -> None:
+        print(f"\nStatus Report as-of {report.as_of}")
+        print("=" * 60)
+        print(f"Project Name: {report.name}")
+        print(f"    Status: {report.status.value}")
+
+        if report.data_notices:
+            print("\nData Notices")
+            for notice in report.data_notices:
+                print(f"    {notice}")
+
+        print()
+
+    def render_detail(self, report: ReportView, spec: ReportSpec) -> None:
+        self._render_header(report)
+        print("DETAIL REPORT FOLLOWS")
