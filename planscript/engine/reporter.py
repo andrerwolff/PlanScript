@@ -137,7 +137,7 @@ class ProjectScheduleReport:
               f"    Planned Duration: {_format_duration(self.planned_duration)}\n"
               f"    Actual Start: {_format_date(self.actual_start)}\n"
               f"    Forecast Finish: {_format_date(self.forecast_finish)}\n"
-              f"    Schedule Variance: {_format_days(self.schedule_variance)}\n\n")
+              f"    Schedule Variance: {_format_days(self.schedule_variance)}\n")
         return text
 
 @dataclass
@@ -238,7 +238,7 @@ class ProjectBudgetReport:
               f"    Planned Budget: {_format_money(self.project_budget)}\n"
               f"    Actual Cost: {_format_money(self.project_actual)}\n"
               f"    Remaining Budget: {_format_money(self.project_remaining)}\n"
-              f"    Cost Variance (actual - budget): {_format_money(self.project_variance)}\n\n")
+              f"    Cost Variance (actual - budget): {_format_money(self.project_variance)}\n")
         return text
 
 @dataclass
@@ -292,7 +292,7 @@ class ProgressReport:
               f"--------------------------------------\n"
               f"    Planned Progress: {_format_percent(self.planned_progress)}\n"
               f"    Actual Progress: {_format_percent(self.actual_progress)}\n"
-              f"    Budget Consumed: {_format_percent(self.budget_consumed)}\n\n")
+              f"    Budget Consumed: {_format_percent(self.budget_consumed)}\n")
         return text
 
 @dataclass
@@ -947,25 +947,29 @@ class ReportSpec:
     not need to assemble filters manually.
 
     Attributes:
-        basis: Which derived data to compute. "schedule" computes CPM
-            schedule figures only. "finance" computes budget and actual
-            cost figures only. "both" computes schedule, budget, and
-            progress figures.
-        scope: Level of granularity. "project" rolls up to project-level
-            figures only. "task" lists every task. "summary" groups
-            tasks under their summary parents.
-        filter: Which tasks to include. "all" includes every task.
+        basis: Which derived data to compute. 
+            "schedule" computes CPM schedule figures only. 
+            "finance" computes budget and actual cost figures only.
+            "both" computes schedule, budget, and progress figures. 
+            #TODO investigate progress for both
+        scope: Level of granularity. 
+            "project" rolls up to project-level figures only.
+            "task" lists every task. 
+            "summary" groups tasks under their summary parents.
+        filter: Which tasks to include. 
+            "all" includes every task.
             "critical" includes only tasks on the critical path.
             "behind" includes tasks that are late or overdue.
-            "overdue" includes tasks that have passed their planned
-            finish. "blocked" includes tasks waiting on incomplete
-            predecessors. "late" includes unstarted tasks whose planned
-            start has passed. "upcoming" includes tasks starting or
-            finishing within look_ahead. "ready_to_start" includes
-            unstarted tasks whose predecessors are complete.
-        renderer: Output format. "detail" renders each task as a block
-            of text. "table" renders tasks as rows in a compact table.
-        as_of: The data date for the report. Defaults to today.
+            "overdue" includes tasks that have passed their planned finish. 
+            "blocked" includes tasks waiting on incomplete predecessors.
+            "late" includes unstarted tasks whose planned start has passed.
+            "upcoming" includes tasks starting or finishing within look_ahead.
+            "ready_to_start" includes unstarted tasks whose predecessors are complete.
+        renderer: Output format. 
+            "detail" renders each task as a block of text.
+            "table" renders tasks as rows in a compact table.
+        as_of: The data date for the report. 
+            Defaults to today.
         look_ahead: Number of days to look ahead for upcoming tasks.
             Defaults to 21 days.
     """
@@ -986,8 +990,9 @@ class ReportBuilder:
     """
 
     project: Project
-    as_of: date = field(default_factory=date.today)
-    look_ahead: timedelta = timedelta(days=21)
+    spec: ReportSpec
+    #as_of: date = field(default_factory=date.today)
+    #look_ahead: timedelta = timedelta(days=21)
 
     def _data_notices(self) -> list[str]:
         """Describe tracking data the report's data date excluded.
@@ -999,7 +1004,7 @@ class ReportBuilder:
         """
 
         by_task = {}
-        for event in self.project.tracker.future_dated_events(self.as_of):
+        for event in self.project.tracker.future_dated_events(self.spec.as_of):
             by_task.setdefault(event.task_id, []).append(event)
 
         notices = []
@@ -1009,7 +1014,7 @@ class ReportBuilder:
             latest = max(event.date for event in events)
             notices.append(
                 f"{task_id}: {len(events)} tracking {noun} after this report's "
-                f"as-of date ({self.as_of}), latest {latest}; not included.")
+                f"as-of date ({self.spec.as_of}), latest {latest}; not included.")
         return notices
 
     def build_view(self) -> "ReportView":
@@ -1024,14 +1029,13 @@ class ReportBuilder:
             A ReportView containing filtered task views, project figures,
             and data notices for the report's data date.
         """
-        analysis = Analyzer(self.project, self.as_of)
-        forecast = Forecaster().forecast(project=self.project, as_of=self.as_of)
-        task_builder = TaskBuilder(project=self.project, analysis=analysis, forecast=forecast, as_of=self.as_of)
+        analysis = Analyzer(self.project, self.spec.as_of)
+        forecast = Forecaster().forecast(project=self.project, as_of=self.spec.as_of)
+        task_builder = TaskBuilder(project=self.project, analysis=analysis, forecast=forecast, as_of=self.spec.as_of)
 
         # Task-level data
         task_views = task_builder.build()
-        spec = ReportSpec(as_of=self.as_of, look_ahead=self.look_ahead)
-        filtered_views = TaskFilter.apply(task_views, spec)
+        filtered_views = TaskFilter.apply(task_views, self.spec)
 
         # Project-level figures
         schedule_report = self._project_schedule_report(analysis, forecast)
@@ -1045,8 +1049,9 @@ class ReportBuilder:
         return ReportView(
             name=self.project.name,
             status=status,
-            as_of=self.as_of,
-            look_ahead=self.look_ahead,
+            spec=self.spec,
+            #as_of=self.spec.as_of,
+            #look_ahead=self.spec.look_ahead,
             schedule_report=schedule_report,
             budget_report=budget_report,
             progress_report=progress_report,
@@ -1068,7 +1073,7 @@ class ReportBuilder:
 
         statuses = set()
         for task_id in self.project.schedule.hierarchy.get_leaf_ids():
-            state = self.project.tracker.get_task_state(task_id, self.as_of)
+            state = self.project.tracker.get_task_state(task_id, self.spec.as_of)
             statuses.add(state.status)
 
         if not statuses:
@@ -1225,7 +1230,7 @@ class ReportBuilder:
         """
 
         return ProjectBudgetReport(project_budget=self.project.budget.total,
-                                    project_actual=self.project.tracker.total_actual_cost(self.as_of))
+                                    project_actual=self.project.tracker.total_actual_cost(self.spec.as_of))
 
     def _project_progress_report(self, analysis:Analyzer) -> ProjectProgressReport:
 
@@ -1252,9 +1257,9 @@ class ReportBuilder:
             planned_finish=planned_finish,
             planned_duration=self.project.tasks[task_id].duration,
         
-            actual_start=tracker.actual_start(task_id, self.as_of),
-            actual_finish=tracker.actual_finish(task_id, self.as_of),
-            actual_duration=tracker.actual_duration(task_id, self.as_of),
+            actual_start=tracker.actual_start(task_id, self.spec.as_of),
+            actual_finish=tracker.actual_finish(task_id, self.spec.as_of),
+            actual_duration=tracker.actual_duration(task_id, self.spec.as_of),
             finish_variance=analysis.finish_variance(task_id),
             
             forecast_start=forecast_start,
@@ -1270,7 +1275,7 @@ class ReportBuilder:
         """
 
         return TaskBudgetReport(task_budget=self.project.budget.get(task_id),
-                                    task_actual=self.project.tracker.actual_cost(task_id, self.as_of))
+                                    task_actual=self.project.tracker.actual_cost(task_id, self.spec.as_of))
 
     def _task_progress_report(self, analysis:Analyzer, task_id) -> TaskProgressReport:
         planned = analysis.planned_progress(task_id)
@@ -1290,7 +1295,7 @@ class ReportBuilder:
         if not budget:
             return None
 
-        actual = self.project.tracker.actual_cost(task_id, self.as_of)
+        actual = self.project.tracker.actual_cost(task_id, self.spec.as_of)
         return float(actual / budget)
 
     def _has_incomplete_predecessors(self, task_id, as_of):
@@ -1375,8 +1380,9 @@ class ReportView:
 
     name: str
     status: ProjectStatus
-    as_of: date
-    look_ahead: timedelta
+    spec: ReportSpec
+    #as_of: date
+    #look_ahead: timedelta
 
     schedule_report: ProjectScheduleReport | None = None
     budget_report: ProjectBudgetReport | None = None
@@ -1630,18 +1636,18 @@ class TaskFilter:
 class ReportRenderer:
     """Render a ReportView without calculating or modifying report data."""
 
-    def render(self, report: ReportView, spec: ReportSpec) -> None:
-        """Render a report using the renderer specified by ReportSpec."""
+    def render(self, report: ReportView) -> None:
+        """Render a report view."""
 
-        if spec.renderer == "detail":
-            self.render_detail(report, spec)
-        elif spec.renderer == "table":
-            self.render_table(report, spec)
+        if report.spec.renderer == "detail":
+            self.render_detail(report)
+        elif report.spec.renderer == "table":
+            self.render_table(report)
         else:
-            raise ValueError(f"Unknown report renderer: {spec.renderer}")
+            raise ValueError(f"Unknown report renderer: {report.spec.renderer}")
     
     def _render_header(self, report: ReportView) -> None:
-        print(f"\nStatus Report as-of {report.as_of}")
+        print(f"\nStatus Report as-of {report.spec.as_of}")
         print("=" * 60)
         print(f"Project Name: {report.name}")
         print(f"    Status: {report.status.value}")
@@ -1653,6 +1659,89 @@ class ReportRenderer:
 
         print()
 
-    def render_detail(self, report: ReportView, spec: ReportSpec) -> None:
+    def _render_project_detail(self, report:ReportView) -> None:
+        if report.spec.basis in ("schedule", "both"):
+            schedule = report.schedule_report
+
+            if schedule is not None:
+                #TODO Expand placeholder see cgpt
+                print(schedule.render_text())
+        if report.spec.basis in ("finance", "both"):
+            budget = report.budget_report
+
+            if budget is not None:
+                #TODO Expand placeholder see cgpt
+                print(budget.render_text())
+
+        if report.spec.basis == "both":
+            progress = report.progress_report
+
+            if progress is not None:
+                #TODO Expand placeholder see cgpt
+                print(progress.render_text())
+
+    def _render_task_detail(self, view: TaskView, spec: ReportSpec) -> None:
+        indent = "    " * view.depth
+        print(f"{indent}{view.task_id} - {view.name}")
+        if view.is_summary:
+            print(f"{indent}    Summary Task")
+        elif view.is_milestone:
+            print(f"{indent}    Milestone")
+
+        if spec.basis in ("schedule", "both"):
+            print(f"{indent}    Schedule Status: HERE")
+
+            if view.is_milestone:
+                print(f"{indent}    Planned Milestone: "
+                      f"{_format_date(view.planned_finish)}")
+                if view.actual_start is not None:
+                    print(f"{indent}    Actual Milestone: "
+                          f"{_format_date(view.actual_start)}")
+                print(f"{indent}    Forecast Milestone: "
+                      f"{_format_date(view.forecast_finish)}")
+            else:
+                print(f"{indent}    Planned Start / Finish / Duration: "
+                      f"{indent}    Actual Start / Finish / Duration:"
+                      f"{indent}    Forecast Start / Finish / Duration:")
+            print(f"{indent}    Finish Variance")
+            print(f"{indent}    Forecast Variance: ")
+            print(f"{indent}    Total Float: ")
+
+            if view.days_overdue is not None:
+                print(f"{indent}    Days Overdue: ")
+            if view.days_late is not None:
+                print(f"{indent}    Days Late: ")
+            if view.days_waiting is not None:
+                print(f"{indent}    Days Waiting: ")
+
+            for blocker in view.blocked_by:
+                print(f"{indent}    Blocked By: {blocker} ")
+            if view.root_causes:
+                print(f"{indent}    Root Causes: {','.join(view.root_causes)}")
+
+        if spec.basis in ("finance", "both"):
+            print(f"{indent}    Planned Budget: {_format_money(view.task_budget)}")
+            print(f"{indent}    Actual Cost: {_format_money(view.task_actual)}")
+            print(f"{indent}    Remaining Budget: {_format_money(view.task_remaining)}")
+            print(f"{indent}    Cost Variance: {_format_money(view.cost_variance)}")
+
+        if spec.basis == "both":
+            print(f"{indent}    Planned Progress: ")
+            print(f"{indent}    Actual Progress:")
+            print(f"{indent}    Budget Progress: ")
+
+        print()
+
+
+    def render_detail(self, report: ReportView) -> None:
         self._render_header(report)
+        if report.spec.scope == "project":
+            self._render_project_detail(report)
+            return
+
+        self._render_project_detail(report)
+
+        for view in report.task_views:
+            self._render_task_detail(view, report.spec) #include spec?
+
         print("DETAIL REPORT FOLLOWS")

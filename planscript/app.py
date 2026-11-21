@@ -113,9 +113,9 @@ def status_command(file_path:Path, as_of:date, look_ahead:int) -> int:
     project = load_project(file_path)
     project.schedule = Scheduler().calculate(project)
     project.budget = Budgeter().calculate(project)
-    spec = ReportSpec()
+    spec = ReportSpec(filter="critical",as_of=as_of, look_ahead=look_ahead)
     report = ReportBuilder(project, spec).build_view()
-    print(ReportRenderer().render(report))
+    ReportRenderer().render(report)
 
     return 0
     
